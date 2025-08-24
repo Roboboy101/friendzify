@@ -5,6 +5,9 @@ import AdminLogin from './pages/auth/AdminLogin'
 import UserSignup from './pages/auth/UserSignup'
 import UserSignin from './pages/auth/UserSignin'
 import PendingApproval from './pages/PendingApproval'
+import UserDashboard from './pages/UserDashboard'
+import ProfileEdit from './pages/ProfileEdit'
+import AdminDashboard from './pages/AdminDashboard'
 
 function App() {
   return (
@@ -18,10 +21,10 @@ function App() {
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/pending-approval" element={<PendingApproval />} />
           
-          {/* Protected Routes - Will be added later */}
-          {/* <Route path="/dashboard" element={<UserDashboard />} /> */}
-          {/* <Route path="/admin/dashboard" element={<AdminDashboard />} /> */}
-          {/* <Route path="/profile" element={<UserProfile />} /> */}
+          {/* Protected Routes */}
+          <Route path="/dashboard" element={<UserDashboard />} />
+          <Route path="/profile/edit" element={<ProfileEdit />} />
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
         </Routes>
       </div>
     </Router>

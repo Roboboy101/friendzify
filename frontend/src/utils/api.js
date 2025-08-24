@@ -1,16 +1,25 @@
 // API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
 
 // Helper function for API calls
 export const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`
   
   const config = {
-    headers: {
+    ...options
+  }
+
+  // Set default headers only if not uploading files
+  if (!(options.body instanceof FormData)) {
+    config.headers = {
       'Content-Type': 'application/json',
       ...options.headers
-    },
-    ...options
+    }
+  } else {
+    // For FormData, let browser set Content-Type automatically
+    config.headers = {
+      ...options.headers
+    }
   }
 
   // Add token if available
@@ -74,6 +83,12 @@ export const userAPI = {
     apiCall('/api/user/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData)
+    }),
+
+  uploadProfilePicture: (formData) => 
+    apiCall('/api/user/profile/picture', {
+      method: 'POST',
+      body: formData
     }),
 
   getApprovalStatus: () => 

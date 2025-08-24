@@ -74,6 +74,14 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Check if account is approved
+    if (!user.is_approved) {
+      return res.status(401).json({
+        success: false,
+        message: 'Your account is pending admin approval. Please wait for approval before signing in.'
+      });
+    }
+
     // Check if account is active
     if (!user.is_active) {
       return res.status(401).json({
@@ -85,11 +93,15 @@ router.post('/login', async (req, res) => {
     // Verify password
     const isPasswordValid = await user.verifyPassword(password);
     if (!isPasswordValid) {
+      console.log(`Failed login attempt for user ${email}: Invalid password`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
       });
     }
+
+    console.log(`Successful login for user ${email} (ID: ${user.id})`);
+    console.log(`User approval status: ${user.is_approved}, Active status: ${user.is_active}`);
 
     // Generate token
     const token = generateToken(user.id, 'user');

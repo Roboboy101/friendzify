@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { userAPI } from '../utils/api'
 
 const PendingApproval = () => {
   const [userData, setUserData] = useState(null)
@@ -24,12 +25,7 @@ const PendingApproval = () => {
 
   const handleCheckStatus = async () => {
     try {
-      const token = localStorage.getItem('userToken')
-      const response = await fetch('/api/user/approval-status', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
+      const response = await userAPI.getApprovalStatus()
 
       if (response.ok) {
         const data = await response.json()

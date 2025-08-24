@@ -59,8 +59,6 @@ const createTables = async () => {
         profile_picture TEXT,
         bio TEXT,
         department TEXT,
-        year INTEGER,
-        section TEXT,
         batch TEXT,
         free_schedule TEXT,
         is_approved BOOLEAN DEFAULT FALSE,

@@ -5,12 +5,11 @@ export class User {
   constructor(data) {
     this.id = data.id;
     this.email = data.email;
+    this.password = data.password;
     this.name = data.name;
     this.profile_picture = data.profile_picture;
     this.bio = data.bio;
     this.department = data.department;
-    this.year = data.year;
-    this.section = data.section;
     this.batch = data.batch;
     this.free_schedule = data.free_schedule;
     this.is_approved = data.is_approved;
@@ -32,15 +31,13 @@ export class User {
       
       const result = await db.run(`
         INSERT INTO users (
-          email, password, name, department, year, section, batch
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          email, password, name, department, batch
+        ) VALUES (?, ?, ?, ?, ?)
       `, [
         userData.email,
         hashedPassword,
         userData.name,
         userData.department || null,
-        userData.year || null,
-        userData.section || null,
         userData.batch || null
       ]);
 
@@ -123,7 +120,7 @@ export class User {
       
       const allowedFields = [
         'name', 'profile_picture', 'bio', 'department', 
-        'year', 'section', 'batch', 'free_schedule'
+        'batch', 'free_schedule'
       ];
       
       allowedFields.forEach(field => {

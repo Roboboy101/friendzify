@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authAPI } from '../../utils/api'
 
 const UserSignup = () => {
   const [formData, setFormData] = useState({
@@ -8,8 +9,6 @@ const UserSignup = () => {
     password: '',
     confirmPassword: '',
     department: '',
-    year: '',
-    section: '',
     batch: ''
   })
   const [loading, setLoading] = useState(false)
@@ -22,8 +21,6 @@ const UserSignup = () => {
     'Civil Engineering', 'Business Administration', 'Mathematics',
     'Physics', 'Chemistry', 'Biology', 'English', 'Other'
   ]
-
-  const years = ['1st Year', '2nd Year', '3rd Year', '4th Year', 'Graduate']
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -53,20 +50,12 @@ const UserSignup = () => {
     }
 
     try {
-      const response = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          department: formData.department,
-          year: formData.year,
-          section: formData.section,
-          batch: formData.batch
-        })
+      const response = await authAPI.register({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        department: formData.department,
+        batch: formData.batch
       })
 
       const data = await response.json()
@@ -76,13 +65,14 @@ const UserSignup = () => {
         // Clear form
         setFormData({
           name: '', email: '', password: '', confirmPassword: '',
-          department: '', year: '', section: '', batch: ''
+          department: '', batch: ''
         })
       } else {
         setError(data.message || 'Registration failed')
       }
     } catch (error) {
-      setError('Network error. Please check your connection.')
+      console.error('Registration error:', error)
+      setError('Unable to connect to server. Please ensure the backend is running on port 5001.')
     } finally {
       setLoading(false)
     }
@@ -241,41 +231,6 @@ const UserSignup = () => {
                       <option key={dept} value={dept}>{dept}</option>
                     ))}
                   </select>
-                </div>
-
-                <div>
-                  <label htmlFor="year" className="block text-sm font-medium text-gray-700 mb-2">
-                    Academic Year
-                  </label>
-                  <select
-                    id="year"
-                    name="year"
-                    value={formData.year}
-                    onChange={handleChange}
-                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  >
-                    <option value="">Select Year</option>
-                    {years.map(year => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="section" className="block text-sm font-medium text-gray-700 mb-2">
-                    Section
-                  </label>
-                  <input
-                    id="section"
-                    name="section"
-                    type="text"
-                    value={formData.section}
-                    onChange={handleChange}
-                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="e.g., A, B, C"
-                  />
                 </div>
 
                 <div>

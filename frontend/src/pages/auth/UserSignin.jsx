@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { authAPI } from '../../utils/api'
 
 const UserSignin = () => {
   const [formData, setFormData] = useState({
@@ -25,14 +26,7 @@ const UserSignin = () => {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      })
-
+      const response = await authAPI.login(formData)
       const data = await response.json()
 
       if (data.success) {
@@ -50,7 +44,8 @@ const UserSignin = () => {
         setError(data.message || 'Login failed')
       }
     } catch (error) {
-      setError('Network error. Please check your connection.')
+      console.error('Login error:', error)
+      setError('Unable to connect to server. Please ensure the backend is running on port 5001.')
     } finally {
       setLoading(false)
     }
