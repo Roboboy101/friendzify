@@ -110,9 +110,9 @@ const Features = () => {
             <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
               Join thousands of students who are already using Friendzify to enhance their academic journey
             </p>
-            <button className="btn-primary text-lg px-8 py-4">
+            <a href="/signup" className="btn-primary text-lg px-8 py-4 inline-block">
               Get Started Today
-            </button>
+            </a>
           </div>
         </div>
       </div>

@@ -19,12 +19,12 @@ const Hero = () => {
             
             {/* CTA Buttons */}
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <button className="btn-primary text-lg px-8 py-4">
+              <a href="/signup" className="btn-primary text-lg px-8 py-4 text-center">
                 Join Friendzify
-              </button>
-              <button className="btn-secondary text-lg px-8 py-4">
+              </a>
+              <a href="#features" className="btn-secondary text-lg px-8 py-4 text-center">
                 Learn More
-              </button>
+              </a>
             </div>
 
             {/* Stats */}

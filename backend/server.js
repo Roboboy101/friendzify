@@ -4,6 +4,12 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { initDatabase } from './config/database.js';
+
+// Import routes
+import authRoutes from './routes/auth.js';
+import adminRoutes from './routes/admin.js';
+import userRoutes from './routes/user.js';
 
 // Load environment variables
 dotenv.config();
@@ -12,10 +18,13 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST"]
   }
 });
+
+// Initialize database
+await initDatabase();
 
 // Middleware
 app.use(helmet());
@@ -23,12 +32,31 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/user', userRoutes);
+
 // Basic route
 app.get('/', (req, res) => {
   res.json({ 
     message: 'Friendzify API Server',
     status: 'running',
-    version: '1.0.0'
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      admin: '/api/admin',
+      user: '/api/user'
+    }
+  });
+});
+
+// Health check route
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Server is healthy',
+    timestamp: new Date().toISOString()
   });
 });
 

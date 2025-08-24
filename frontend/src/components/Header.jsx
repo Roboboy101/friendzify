@@ -32,12 +32,12 @@ const Header = () => {
 
           {/* Desktop CTA Buttons */}
           <div className="hidden md:flex items-center space-x-4">
-            <button className="text-primary-600 hover:text-primary-700 px-3 py-2 text-sm font-medium transition-colors">
+            <a href="/signin" className="text-primary-600 hover:text-primary-700 px-3 py-2 text-sm font-medium transition-colors">
               Sign In
-            </button>
-            <button className="btn-primary text-sm">
+            </a>
+            <a href="/signup" className="btn-primary text-sm">
               Get Started
-            </button>
+            </a>
           </div>
 
           {/* Mobile menu button */}
@@ -71,12 +71,12 @@ const Header = () => {
                 Contact
               </a>
               <div className="pt-4 pb-2 space-y-2">
-                <button className="w-full text-left text-primary-600 hover:text-primary-700 block px-3 py-2 text-base font-medium">
+                <a href="/signin" className="w-full text-left text-primary-600 hover:text-primary-700 block px-3 py-2 text-base font-medium">
                   Sign In
-                </button>
-                <button className="w-full btn-primary text-base">
+                </a>
+                <a href="/signup" className="w-full btn-primary text-base text-center block">
                   Get Started
-                </button>
+                </a>
               </div>
             </div>
           </div>
