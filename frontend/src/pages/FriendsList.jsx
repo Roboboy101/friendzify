@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { friendsAPI } from '../utils/api'
+import { friendsAPI, closeFriendsAPI } from '../utils/api'
 import Avatar from '../components/Avatar'
 import ReportModal from '../components/ReportModal'
 import ScheduleViewModal from '../components/ScheduleViewModal'

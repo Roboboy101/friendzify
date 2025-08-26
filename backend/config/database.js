@@ -157,6 +157,54 @@ const createTables = async () => {
       )
     `);
 
+    // Create close_friends table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS close_friends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        friend_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, friend_id)
+      )
+    `);
+
+    // Create sos_alerts table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS sos_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        location_accuracy REAL,
+        address TEXT,
+        is_active BOOLEAN DEFAULT TRUE,
+        is_cancelled BOOLEAN DEFAULT FALSE,
+        cancelled_at DATETIME,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create sos_notifications table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS sos_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sos_alert_id INTEGER NOT NULL,
+        recipient_id INTEGER NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        acknowledged_at DATETIME,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sos_alert_id) REFERENCES sos_alerts(id) ON DELETE CASCADE,
+        FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(sos_alert_id, recipient_id)
+      )
+    `);
+
     console.log('✅ Database tables created successfully');
   } catch (error) {
     console.error('❌ Error creating tables:', error);

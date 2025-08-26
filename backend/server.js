@@ -12,6 +12,8 @@ import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
 import friendsRoutes from './routes/friends.js';
 import chatRoutes from './routes/chat.js';
+import closeFriendsRoutes from './routes/closeFriends.js';
+import sosRoutes from './routes/sos.js';
 
 // Load environment variables
 dotenv.config();
@@ -43,6 +45,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/close-friends', closeFriendsRoutes);
+app.use('/api/sos', sosRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -51,11 +55,13 @@ app.get('/', (req, res) => {
     status: 'running',
     version: '1.0.0',
     endpoints: {
-      auth: '/api/auth',
-      admin: '/api/admin',
-      user: '/api/user',
-      friends: '/api/friends',
-      chat: '/api/chat'
+          auth: '/api/auth',
+    admin: '/api/admin',
+    user: '/api/user',
+    friends: '/api/friends',
+    chat: '/api/chat',
+    closeFriends: '/api/close-friends',
+    sos: '/api/sos'
     }
   });
 });
@@ -79,6 +85,7 @@ io.on('connection', (socket) => {
   socket.on('join', (userId) => {
     connectedUsers.set(userId, socket.id);
     socket.userId = userId;
+    socket.join(`user_${userId}`); // Join user-specific room for SOS alerts
     console.log(`User ${userId} joined with socket ${socket.id}`);
   });
   

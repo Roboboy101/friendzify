@@ -111,6 +111,59 @@ export const userAPI = {
     apiCall(`/api/user/${userId}`)
 }
 
+// Close Friends API calls
+export const closeFriendsAPI = {
+  getCloseFriends: () => 
+    apiCall('/api/close-friends'),
+
+  addCloseFriend: (friendId) => 
+    apiCall(`/api/close-friends/${friendId}`, {
+      method: 'POST'
+    }),
+
+  removeCloseFriend: (friendId) => 
+    apiCall(`/api/close-friends/${friendId}`, {
+      method: 'DELETE'
+    }),
+
+  checkCloseFriend: (friendId) => 
+    apiCall(`/api/close-friends/check/${friendId}`),
+
+  getCloseFriendsCount: () => 
+    apiCall('/api/close-friends/count')
+};
+
+// SOS API calls
+export const sosAPI = {
+  createAlert: (locationData) => 
+    apiCall('/api/sos/alert', {
+      method: 'POST',
+      body: JSON.stringify(locationData)
+    }),
+
+  cancelAlert: (alertId) => 
+    apiCall(`/api/sos/alert/${alertId}/cancel`, {
+      method: 'POST'
+    }),
+
+  getActiveAlerts: () => 
+    apiCall('/api/sos/alerts/active'),
+
+  getNotifications: (limit = 50) => 
+    apiCall(`/api/sos/notifications?limit=${limit}`),
+
+  markNotificationAsRead: (notificationId) => 
+    apiCall(`/api/sos/notifications/${notificationId}/read`, {
+      method: 'POST'
+    }),
+
+  getUnreadCount: () => 
+    apiCall('/api/sos/notifications/unread-count'),
+
+  getAlertDetails: (alertId) => 
+    apiCall(`/api/sos/alert/${alertId}`)
+};
+
 // Admin API calls
 export const adminAPI = {
   getDashboardStats: () => 
@@ -259,4 +312,4 @@ export const chatAPI = {
     })
 }
 
-export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI }
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI }

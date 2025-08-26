@@ -16,6 +16,8 @@ import FriendRequests from './pages/FriendRequests'
 import FriendsList from './pages/FriendsList'
 import ChatList from './pages/ChatList'
 import Chat from './pages/Chat'
+import CloseFriends from './pages/CloseFriends'
+import SOS from './pages/SOS'
 
 function App() {
   return (
@@ -45,6 +47,10 @@ function App() {
             {/* Chat Routes */}
             <Route path="/chat" element={<ChatList />} />
             <Route path="/chat/:userId" element={<Chat />} />
+            
+            {/* Emergency SOS Routes */}
+            <Route path="/close-friends" element={<CloseFriends />} />
+            <Route path="/sos" element={<SOS />} />
           </Routes>
         </div>
       </Router>
