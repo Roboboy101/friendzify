@@ -1,5 +1,5 @@
 import express from 'express';
-import { User } from '../models/User.js';
+import User from '../models/User.js';
 import { verifyToken, requireApprovedUser } from '../middleware/auth.js';
 import { uploadProfilePicture, handleUploadError, deleteOldProfilePicture } from '../middleware/upload.js';
 import path from 'path';

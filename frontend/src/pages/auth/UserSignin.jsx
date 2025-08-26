@@ -26,8 +26,7 @@ const UserSignin = () => {
     setError('')
 
     try {
-      const response = await authAPI.login(formData)
-      const data = await response.json()
+      const data = await authAPI.login(formData)
 
       if (data.success) {
         // Store token and user data
@@ -41,7 +40,18 @@ const UserSignin = () => {
           navigate('/pending-approval')
         }
       } else {
-        setError(data.message || 'Login failed')
+        // Handle account restrictions and suspensions
+        if (data.reason && ['pending_approval', 'temporarily_restricted', 'permanently_blocked', 'deactivated'].includes(data.reason)) {
+          navigate('/account-restricted', {
+            state: {
+              reason: data.reason,
+              message: data.message,
+              details: data.details
+            }
+          })
+        } else {
+          setError(data.message || 'Login failed')
+        }
       }
     } catch (error) {
       console.error('Login error:', error)

@@ -1,6 +1,6 @@
 import express from 'express';
-import { User } from '../models/User.js';
-import { Admin } from '../models/Admin.js';
+import User from '../models/User.js';
+import Admin from '../models/Admin.js';
 import { generateToken, storeSession, removeSession, verifyToken, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -74,29 +74,24 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check if account is approved
-    if (!user.is_approved) {
-      return res.status(401).json({
-        success: false,
-        message: 'Your account is pending admin approval. Please wait for approval before signing in.'
-      });
-    }
-
-    // Check if account is active
-    if (!user.is_active) {
-      return res.status(401).json({
-        success: false,
-        message: 'Your account has been suspended. Please contact support.'
-      });
-    }
-
-    // Verify password
+    // Verify password first
     const isPasswordValid = await user.verifyPassword(password);
     if (!isPasswordValid) {
       console.log(`Failed login attempt for user ${email}: Invalid password`);
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password.'
+      });
+    }
+
+    // Check if user can login (handles approval, active status, and restrictions)
+    const loginCheck = await user.canLogin();
+    if (!loginCheck.canLogin) {
+      return res.status(401).json({
+        success: false,
+        message: loginCheck.message,
+        reason: loginCheck.reason,
+        details: loginCheck.details
       });
     }
 

@@ -63,12 +63,19 @@ const createTables = async () => {
         free_schedule TEXT,
         is_approved BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
+        is_restricted BOOLEAN DEFAULT FALSE,
+        restriction_type TEXT CHECK(restriction_type IN ('temporary', 'permanent', NULL)),
+        restriction_reason TEXT,
+        restriction_start_date DATETIME,
+        restriction_end_date DATETIME,
+        restricted_by INTEGER,
         registration_date DATETIME DEFAULT CURRENT_TIMESTAMP,
         approved_date DATETIME,
         approved_by INTEGER,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (approved_by) REFERENCES admins(id)
+        FOREIGN KEY (approved_by) REFERENCES admins(id),
+        FOREIGN KEY (restricted_by) REFERENCES admins(id)
       )
     `);
 
@@ -84,6 +91,69 @@ const createTables = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id),
         FOREIGN KEY (admin_id) REFERENCES admins(id)
+      )
+    `);
+
+    // Friend requests table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS friend_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        receiver_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(sender_id, receiver_id)
+      )
+    `);
+
+    // Friends table (accepted relationships)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS friends (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user1_id INTEGER NOT NULL,
+        user2_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user1_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (user2_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user1_id, user2_id)
+      )
+    `);
+
+    // Reports table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reporter_id INTEGER NOT NULL,
+        reported_user_id INTEGER NOT NULL,
+        reason TEXT NOT NULL,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
+        admin_notes TEXT,
+        reviewed_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reported_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES admins(id)
+      )
+    `);
+
+    // Chat messages table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sender_id INTEGER NOT NULL,
+        receiver_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        message_type TEXT NOT NULL DEFAULT 'text' CHECK(message_type IN ('text', 'image', 'file')),
+        is_read BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
 

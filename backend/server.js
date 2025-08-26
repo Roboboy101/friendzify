@@ -10,6 +10,8 @@ import { initDatabase } from './config/database.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import userRoutes from './routes/user.js';
+import friendsRoutes from './routes/friends.js';
+import chatRoutes from './routes/chat.js';
 
 // Load environment variables
 dotenv.config();
@@ -39,6 +41,8 @@ app.use('/uploads', express.static('uploads'));
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/friends', friendsRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -49,7 +53,9 @@ app.get('/', (req, res) => {
     endpoints: {
       auth: '/api/auth',
       admin: '/api/admin',
-      user: '/api/user'
+      user: '/api/user',
+      friends: '/api/friends',
+      chat: '/api/chat'
     }
   });
 });
@@ -64,18 +70,95 @@ app.get('/api/health', (req, res) => {
 });
 
 // Socket.IO connection handling
+const connectedUsers = new Map(); // userId -> socketId
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
+  // User joins with their userId
+  socket.on('join', (userId) => {
+    connectedUsers.set(userId, socket.id);
+    socket.userId = userId;
+    console.log(`User ${userId} joined with socket ${socket.id}`);
+  });
+  
+  // Handle sending messages
+  socket.on('send_message', async (data) => {
+    try {
+      const { receiverId, message, messageType = 'text' } = data;
+      const senderId = socket.userId;
+      
+      if (!senderId) {
+        socket.emit('error', { message: 'Not authenticated' });
+        return;
+      }
+      
+      // Send message to receiver if they're online
+      const receiverSocketId = connectedUsers.get(parseInt(receiverId));
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('new_message', {
+          senderId,
+          receiverId,
+          message,
+          messageType,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Acknowledge to sender
+      socket.emit('message_sent', {
+        receiverId,
+        message,
+        messageType,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Socket message error:', error);
+      socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
+  
+  // Handle typing indicators
+  socket.on('typing', (data) => {
+    const { receiverId, isTyping } = data;
+    const receiverSocketId = connectedUsers.get(parseInt(receiverId));
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('user_typing', {
+        userId: socket.userId,
+        isTyping
+      });
+    }
+  });
+  
+  // Handle message read receipts
+  socket.on('message_read', (data) => {
+    const { senderId } = data;
+    const senderSocketId = connectedUsers.get(parseInt(senderId));
+    if (senderSocketId) {
+      io.to(senderSocketId).emit('message_read_by', {
+        readerId: socket.userId
+      });
+    }
+  });
+  
   socket.on('disconnect', () => {
+    if (socket.userId) {
+      connectedUsers.delete(socket.userId);
+      console.log(`User ${socket.userId} disconnected`);
+    }
     console.log('User disconnected:', socket.id);
   });
 });
 
-const PORT = process.env.PORT || 5001;
+// Make io available to routes
+app.set('io', io);
 
-server.listen(PORT, () => {
-  console.log(`🚀 Friendzify server is running on port ${PORT}`);
+const PORT = process.env.PORT || 5001;
+const HOST = process.env.HOST || 'localhost';
+
+server.listen(PORT, HOST, () => {
+  console.log(`🚀 Friendzify server is running on http://${HOST}:${PORT}`);
   console.log(`📡 Socket.IO server is ready for real-time connections`);
 });
 

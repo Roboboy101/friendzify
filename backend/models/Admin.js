@@ -10,7 +10,7 @@ export class Admin {
     this.created_at = data.created_at;
     this.updated_at = data.updated_at;
   }
-
+//hello world
   // Create new admin (only existing admin can create)
   static async create(adminData) {
     const db = getDatabase();
@@ -162,3 +162,5 @@ export class Admin {
     return adminWithoutPassword;
   }
 }
+
+export default Admin;

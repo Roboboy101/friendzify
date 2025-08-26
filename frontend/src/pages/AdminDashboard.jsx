@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminAPI, authAPI } from '../utils/api'
+import AccountRestrictionModal from '../components/AccountRestrictionModal'
 
 const AdminDashboard = () => {
   const [admin, setAdmin] = useState(null)
@@ -11,6 +12,8 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [error, setError] = useState('')
+  const [showRestrictionModal, setShowRestrictionModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -125,6 +128,50 @@ const AdminDashboard = () => {
     }
   }
 
+  const handleRestrictUser = (user) => {
+    setSelectedUser(user)
+    setShowRestrictionModal(true)
+  }
+
+  const handleRemoveRestriction = async (userId) => {
+    if (!confirm('Are you sure you want to remove this user\'s restriction?')) {
+      return
+    }
+
+    setActionLoading(userId)
+    try {
+      const response = await adminAPI.removeRestriction(userId)
+      const data = await response.json()
+      
+      if (data.success) {
+        // Update user in the list
+        setApprovedUsers(prev => 
+          prev.map(user => 
+            user.id === userId 
+              ? { ...user, is_restricted: false, restriction_type: null, restriction_reason: null }
+              : user
+          )
+        )
+      } else {
+        setError(data.message || 'Failed to remove restriction')
+      }
+    } catch (error) {
+      console.error('Error removing restriction:', error)
+      setError('Network error. Please try again.')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleRestrictionSuccess = (updatedUser) => {
+    // Update user in the list
+    setApprovedUsers(prev => 
+      prev.map(user => 
+        user.id === updatedUser.id ? updatedUser : user
+      )
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -149,6 +196,15 @@ const AdminDashboard = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/admin/reports')}
+                className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                Reports
+              </button>
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
                   <span className="text-red-600 font-medium text-sm">
@@ -352,13 +408,24 @@ const AdminDashboard = () => {
                               <div>
                                 <div className="flex items-center space-x-2">
                                   <h4 className="text-lg font-semibold text-gray-900">{user.name}</h4>
-                                  <span className={`px-2 py-1 text-xs rounded-full ${
-                                    user.is_active 
-                                      ? 'bg-green-100 text-green-800' 
-                                      : 'bg-red-100 text-red-800'
-                                  }`}>
-                                    {user.is_active ? 'Active' : 'Suspended'}
-                                  </span>
+                                  <div className="flex space-x-2">
+                                    <span className={`px-2 py-1 text-xs rounded-full ${
+                                      user.is_active 
+                                        ? 'bg-green-100 text-green-800' 
+                                        : 'bg-red-100 text-red-800'
+                                    }`}>
+                                      {user.is_active ? 'Active' : 'Suspended'}
+                                    </span>
+                                    {user.is_restricted && (
+                                      <span className={`px-2 py-1 text-xs rounded-full ${
+                                        user.restriction_type === 'permanent' 
+                                          ? 'bg-red-100 text-red-800' 
+                                          : 'bg-orange-100 text-orange-800'
+                                      }`}>
+                                        {user.restriction_type === 'permanent' ? 'Blocked' : 'Restricted'}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                                 <p className="text-gray-600">{user.email}</p>
                                 <div className="flex items-center space-x-4 mt-1 text-sm text-gray-500">
@@ -372,23 +439,60 @@ const AdminDashboard = () => {
                             </div>
                           </div>
                           
-                          <div className="flex space-x-3">
-                            <button
-                              onClick={() => handleSuspendUser(user.id, !user.is_active)}
-                              disabled={actionLoading === user.id}
-                              className={`px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-                                user.is_active
-                                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                                  : 'bg-green-600 hover:bg-green-700 text-white'
-                              }`}
-                            >
-                              {actionLoading === user.id 
-                                ? 'Processing...' 
-                                : user.is_active 
-                                  ? 'Suspend' 
-                                  : 'Activate'
-                              }
-                            </button>
+                          <div className="flex flex-col space-y-2">
+                            {/* Restriction Info */}
+                            {user.is_restricted && (
+                              <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                                <strong>Restricted:</strong> {user.restriction_reason}
+                                {user.restriction_type === 'temporary' && user.restriction_end_date && (
+                                  <div>Ends: {new Date(user.restriction_end_date).toLocaleDateString()}</div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Action Buttons */}
+                            <div className="mb-2">
+                              <div className="text-xs text-gray-500 mb-1">
+                                <strong>Suspend:</strong> Deactivate login • <strong>Restrict:</strong> Time-based blocking with reason
+                              </div>
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleSuspendUser(user.id, !user.is_active)}
+                                disabled={actionLoading === user.id}
+                                className={`px-3 py-1 rounded text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+                                  user.is_active
+                                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
+                                    : 'bg-green-600 hover:bg-green-700 text-white'
+                                }`}
+                                title={user.is_active ? 'Suspend user account (deactivate login)' : 'Reactivate user account'}
+                              >
+                                {actionLoading === user.id 
+                                  ? 'Processing...' 
+                                  : user.is_active 
+                                    ? 'Suspend' 
+                                    : 'Reactivate'
+                                }
+                              </button>
+                              
+                              {user.is_restricted ? (
+                                <button
+                                  onClick={() => handleRemoveRestriction(user.id)}
+                                  disabled={actionLoading === user.id}
+                                  className="px-3 py-1 rounded text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Remove Restriction
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleRestrictUser(user)}
+                                  disabled={actionLoading === user.id}
+                                  className="px-3 py-1 rounded text-xs font-medium bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Restrict Account
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -400,6 +504,18 @@ const AdminDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Account Restriction Modal */}
+      {showRestrictionModal && selectedUser && (
+        <AccountRestrictionModal
+          user={selectedUser}
+          onClose={() => {
+            setShowRestrictionModal(false)
+            setSelectedUser(null)
+          }}
+          onSuccess={handleRestrictionSuccess}
+        />
+      )}
     </div>
   )
 }

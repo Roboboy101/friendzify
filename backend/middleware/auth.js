@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../config/database.js';
-import { User } from '../models/User.js';
-import { Admin } from '../models/Admin.js';
+import User from '../models/User.js';
+import Admin from '../models/Admin.js';
 
 // Generate JWT token
 export const generateToken = (userId, userType, expiresIn = '7d') => {
@@ -111,6 +111,9 @@ export const verifyToken = async (req, res, next) => {
     });
   }
 };
+
+// Basic auth middleware (combines token verification)
+export const requireAuth = verifyToken;
 
 // Admin-only middleware
 export const requireAdmin = async (req, res, next) => {

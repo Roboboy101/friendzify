@@ -22,8 +22,14 @@ export const apiCall = async (endpoint, options = {}) => {
     }
   }
 
-  // Add token if available
-  const token = localStorage.getItem('userToken') || localStorage.getItem('adminToken')
+  // Add token if available - prioritize adminToken for admin endpoints
+  let token
+  if (endpoint.includes('/admin/')) {
+    token = localStorage.getItem('adminToken') || localStorage.getItem('userToken')
+  } else {
+    token = localStorage.getItem('userToken') || localStorage.getItem('adminToken')
+  }
+  
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -46,11 +52,13 @@ export const authAPI = {
       body: JSON.stringify(userData)
     }),
 
-  login: (credentials) => 
-    apiCall('/api/auth/login', {
+  login: async (credentials) => {
+    const response = await apiCall('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials)
-    }),
+    })
+    return await response.json()
+  },
 
   // Admin authentication
   adminLogin: (credentials) => 
@@ -134,7 +142,121 @@ export const adminAPI = {
   deleteUser: (userId) => 
     apiCall(`/api/admin/users/${userId}`, {
       method: 'DELETE'
+    }),
+
+  // Report management
+  getReports: (filters = {}) => {
+    const params = new URLSearchParams(filters).toString()
+    return apiCall(`/api/admin/reports${params ? `?${params}` : ''}`)
+  },
+
+  getReportStats: () => 
+    apiCall('/api/admin/reports/stats'),
+
+  getMostReportedUsers: (limit = 10) => 
+    apiCall(`/api/admin/reports/most-reported?limit=${limit}`),
+
+  getReportDetails: (reportId) => 
+    apiCall(`/api/admin/reports/${reportId}`),
+
+  updateReportStatus: (reportId, status, adminNotes = '') => 
+    apiCall(`/api/admin/reports/${reportId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, adminNotes })
+    }),
+
+  // Account restrictions
+  restrictUser: (userId, restrictionType, reason, durationDays = null) => 
+    apiCall(`/api/admin/users/${userId}/restrict`, {
+      method: 'POST',
+      body: JSON.stringify({ restrictionType, reason, durationDays })
+    }),
+
+  removeRestriction: (userId) => 
+    apiCall(`/api/admin/users/${userId}/restrict`, {
+      method: 'DELETE'
+    }),
+
+  getRestrictedUsers: () => 
+    apiCall('/api/admin/users/restricted')
+}
+
+// Friends API calls
+export const friendsAPI = {
+  searchUsers: (searchTerm = '', filters = {}) => {
+    const params = new URLSearchParams()
+    if (searchTerm) params.append('q', searchTerm)
+    if (filters.department) params.append('department', filters.department)
+    if (filters.batch) params.append('batch', filters.batch)
+    return apiCall(`/api/friends/search?${params.toString()}`)
+  },
+
+  sendFriendRequest: (userId) => 
+    apiCall('/api/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ userId })
+    }),
+
+  getFriendRequests: (type = 'received') => 
+    apiCall(`/api/friends/requests?type=${type}`),
+
+  acceptFriendRequest: (requestId) => 
+    apiCall(`/api/friends/requests/${requestId}/accept`, {
+      method: 'POST'
+    }),
+
+  rejectFriendRequest: (requestId) => 
+    apiCall(`/api/friends/requests/${requestId}/reject`, {
+      method: 'POST'
+    }),
+
+  getFriends: () => 
+    apiCall('/api/friends'),
+
+  removeFriend: (friendId) => 
+    apiCall(`/api/friends/${friendId}`, {
+      method: 'DELETE'
+    }),
+
+  getFriendshipStatus: (userId) => 
+    apiCall(`/api/friends/status/${userId}`),
+
+  reportFriend: (reportData) => 
+    apiCall('/api/friends/report', {
+      method: 'POST',
+      body: JSON.stringify(reportData)
+    }),
+
+  getReportReasons: () => 
+    apiCall('/api/friends/report/reasons')
+}
+
+// Chat API calls
+export const chatAPI = {
+  getConversations: () => 
+    apiCall('/api/chat/conversations'),
+
+  getConversation: (userId, limit = 50, offset = 0) => 
+    apiCall(`/api/chat/conversation/${userId}?limit=${limit}&offset=${offset}`),
+
+  sendMessage: (receiverId, message, messageType = 'text') => 
+    apiCall('/api/chat/send', {
+      method: 'POST',
+      body: JSON.stringify({ receiverId, message, messageType })
+    }),
+
+  markAsRead: (userId) => 
+    apiCall(`/api/chat/read/${userId}`, {
+      method: 'POST'
+    }),
+
+  getUnreadCount: () => 
+    apiCall('/api/chat/unread-count'),
+
+  deleteMessage: (messageId) => 
+    apiCall(`/api/chat/${messageId}`, {
+      method: 'DELETE'
     })
 }
 
-export default { apiCall, authAPI, userAPI, adminAPI }
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI }
