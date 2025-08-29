@@ -198,15 +198,36 @@ const Chat = () => {
     }
   };
 
+  // Robust timestamp parser to handle:
+  // - ISO strings (with or without Z)
+  // - SQLite CURRENT_TIMESTAMP format: "YYYY-MM-DD HH:MM:SS"
+  const parseTimestamp = (ts) => {
+    if (!ts) return null;
+    if (ts instanceof Date) return ts;
+    let d = new Date(ts);
+    if (!isNaN(d.getTime())) return d;
+    // Handle "YYYY-MM-DD HH:MM:SS" → treat as UTC
+    if (typeof ts === 'string' && /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(ts)) {
+      d = new Date(ts.replace(' ', 'T') + 'Z');
+      if (!isNaN(d.getTime())) return d;
+    }
+    // Handle ISO without Z: add Z as UTC
+    if (typeof ts === 'string' && /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(ts) && !/[zZ]$/.test(ts)) {
+      d = new Date(ts + 'Z');
+      if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+  };
+
   const formatTime = (timestamp) => {
-    // Ensure timestamp is treated as UTC and converted to local time
-    const date = new Date(timestamp + 'Z'); // Force UTC interpretation
+    const date = parseTimestamp(timestamp);
+    if (!date) return '';
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDate = (timestamp) => {
-    // Ensure timestamp is treated as UTC and converted to local time
-    const date = new Date(timestamp + 'Z'); // Force UTC interpretation
+    const date = parseTimestamp(timestamp);
+    if (!date) return '';
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
