@@ -10,6 +10,7 @@ const Chat = () => {
   const navigate = useNavigate();
   const { socket } = useSocket();
   const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [friend, setFriend] = useState(null);
   const [onlineStatus, setOnlineStatus] = useState({ isOnline: false, lastSeen: null });
@@ -71,7 +72,29 @@ const Chat = () => {
         const data = await response.json();
         
         if (data.success) {
-          setMessages(data.messages);
+          // Normalize created_at to epoch ms when available from API
+          const normalized = (data.messages || []).map(m => ({
+            ...m,
+            created_at: (typeof m.created_at_epoch !== 'undefined' && m.created_at_epoch !== null)
+              ? m.created_at_epoch
+              : m.created_at
+          }));
+          setMessages(normalized);
+          // Debug: log first 3 timestamps
+          try {
+            const sample = normalized.slice(0, 3);
+            sample.forEach((m, idx) => {
+              const d = parseTimestamp(m.created_at);
+              // eslint-disable-next-line no-console
+              console.log('[Chat] msg', idx, {
+                raw_created_at: m.created_at,
+                created_at_epoch: m.created_at_epoch,
+                parsed: d?.toISOString?.(),
+                local: d?.toLocaleString?.(),
+                tz_offset_min: new Date().getTimezoneOffset()
+              });
+            });
+          } catch {}
           if (data.messages.length > 0) {
             // Get friend info from the first message
             const firstMessage = data.messages[0];
@@ -91,6 +114,34 @@ const Chat = () => {
     loadConversation();
   }, [userId, currentUser]);
 
+  // Load conversations for left panel
+  useEffect(() => {
+    const loadConversations = async () => {
+      try {
+        const res = await chatAPI.getConversations();
+        const data = await res.json();
+        if (data.success) {
+          setConversations(data.conversations || []);
+        }
+      } catch (e) {
+        console.error('Error loading conversations:', e);
+      }
+    };
+    loadConversations();
+  }, []);
+
+  // If friend picture is missing, try to hydrate from conversations list
+  useEffect(() => {
+    if (!friend || friend.profile_picture) return;
+    const match = conversations.find(c => parseInt(c.id) === parseInt(userId));
+    if (match) {
+      setFriend(prev => ({
+        ...prev,
+        profile_picture: match.profile_picture
+      }));
+    }
+  }, [friend, conversations, userId]);
+
   // Socket event listeners
   useEffect(() => {
     if (!socket) return;
@@ -106,7 +157,7 @@ const Chat = () => {
             receiver_id: data.receiverId,
             message: data.message,
             message_type: data.messageType || 'text',
-            created_at: data.timestamp || new Date().toISOString(),
+            created_at: data.timestampMs || data.timestamp || Date.now(),
             sender_name: friend?.name,
             sender_picture: friend?.profile_picture
           }];
@@ -204,11 +255,24 @@ const Chat = () => {
   const parseTimestamp = (ts) => {
     if (!ts) return null;
     if (ts instanceof Date) return ts;
+    // Numeric epoch (seconds or milliseconds)
+    if (typeof ts === 'number') {
+      // Heuristic: treat 13-digit as ms, 10-digit as s
+      const ms = ts < 1e12 ? ts * 1000 : ts;
+      const dNum = new Date(ms);
+      return isNaN(dNum.getTime()) ? null : dNum;
+    }
+    if (typeof ts === 'string' && /^\d{10,13}$/.test(ts)) {
+      const num = parseInt(ts, 10);
+      const ms = num < 1e12 ? num * 1000 : num;
+      const dNum = new Date(ms);
+      return isNaN(dNum.getTime()) ? null : dNum;
+    }
     let d = new Date(ts);
     if (!isNaN(d.getTime())) return d;
-    // Handle "YYYY-MM-DD HH:MM:SS" → treat as UTC
+    // Handle "YYYY-MM-DD HH:MM:SS" → treat as LOCAL to avoid post-refresh shifts
     if (typeof ts === 'string' && /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(ts)) {
-      d = new Date(ts.replace(' ', 'T') + 'Z');
+      d = new Date(ts.replace(' ', 'T'));
       if (!isNaN(d.getTime())) return d;
     }
     // Handle ISO without Z: add Z as UTC
@@ -250,50 +314,77 @@ const Chat = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-100">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/friends')}
-                className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              
-              {friend && (
-                <div className="flex items-center space-x-3">
-                  <Avatar 
-                    user={friend} 
-                    size="h-10 w-10" 
-                    textSize="text-sm"
-                  />
-                  <div>
-                    <h1 className="text-lg font-semibold text-gray-900">{friend.name}</h1>
-                    <OnlineStatus 
-                      isOnline={onlineStatus.isOnline}
-                      lastSeen={onlineStatus.lastSeen}
-                      size="sm"
-                      className="mt-1"
-                    />
-                    {isTyping && (
-                      <p className="text-sm text-primary-600">typing...</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="h-screen bg-gray-50 flex">
+      {/* Left slim panel: conversations */}
+      <aside className="w-72 border-r border-gray-200 bg-white flex flex-col">
+        <div className="h-16 px-4 flex items-center border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">Chats</h2>
         </div>
-      </div>
+        <div className="flex-1 overflow-y-auto">
+          {conversations.length === 0 ? (
+            <div className="p-4 text-sm text-gray-500">No conversations yet</div>
+          ) : (
+            conversations.map((c) => (
+              <button
+                key={c.id || c.other_user_id || c.user_id || c.name + c.last_message_time}
+                onClick={() => navigate(`/chat/${c.id}`)}
+                className={`w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-50 ${parseInt(userId) === parseInt(c.id) ? 'bg-gray-50' : ''}`}
+              >
+                <Avatar 
+                  src={c?.profile_picture ? `http://localhost:5001${c.profile_picture}` : ''}
+                  name={c?.name}
+                  size={40}
+                />
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
+                    <p className="text-xs text-gray-500 ml-2 truncate">{formatTime(c.last_message_time)}</p>
+                  </div>
+                  <p className="text-xs text-gray-600 truncate">{c.last_message}</p>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </aside>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-hidden">
-        <div className="max-w-4xl mx-auto h-full flex flex-col">
+      {/* Right panel: chat */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Sticky header with friend pic and name */}
+        <div className="h-16 px-4 bg-white border-b border-gray-100 flex items-center sticky top-0 z-10">
+          <button
+            onClick={() => navigate('/friends')}
+            className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 mr-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          {friend && (
+            <div className="flex items-center space-x-3">
+              <Avatar 
+                src={friend?.profile_picture ? `http://localhost:5001${friend.profile_picture}` : ''}
+                name={friend?.name}
+                size={40}
+              />
+              <div>
+                <h1 className="text-lg font-semibold text-gray-900">{friend.name}</h1>
+                <OnlineStatus 
+                  isOnline={onlineStatus.isOnline}
+                  lastSeen={onlineStatus.lastSeen}
+                  size="sm"
+                  className="mt-0.5"
+                />
+              </div>
+            </div>
+          )}
+          {isTyping && (
+            <p className="ml-auto text-sm text-primary-600">typing...</p>
+          )}
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.length === 0 ? (
               <div className="text-center py-12">

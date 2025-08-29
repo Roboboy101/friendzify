@@ -136,6 +136,7 @@ io.on('connection', (socket) => {
           message,
           messageType,
           timestamp: new Date().toISOString(),
+          timestampMs: Date.now(),
           messageId: Date.now() // Add unique message ID
         });
       }
@@ -145,7 +146,8 @@ io.on('connection', (socket) => {
         receiverId,
         message,
         messageType,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        timestampMs: Date.now()
       });
       
     } catch (error) {

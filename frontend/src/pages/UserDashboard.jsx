@@ -278,6 +278,46 @@ const UserDashboard = () => {
               </div>
             </div>
 
+            {/* Quick Actions (moved above Campus Free Schedule) */}
+            <div className="card p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button 
+                  onClick={() => navigate('/sos')}
+                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 18.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">SOS Emergency</h3>
+                      <p className="text-sm text-gray-600">Send emergency alert</p>
+                    </div>
+                  </div>
+                </button>
+                
+                <button 
+                  onClick={() => navigate('/close-friends')}
+                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Close Friends</h3>
+                      <p className="text-sm text-gray-600">Manage emergency contacts</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Campus Free Schedule Section */}
             <div className="card p-6">
               <div className="flex items-center justify-between mb-4">
@@ -448,45 +488,7 @@ const UserDashboard = () => {
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="card p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button 
-                  onClick={() => navigate('/sos')}
-                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.314 18.5c-.77.833.192 2.5 1.732 2.5z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">SOS Emergency</h3>
-                      <p className="text-sm text-gray-600">Send emergency alert</p>
-                    </div>
-                  </div>
-                </button>
-                
-                <button 
-                  onClick={() => navigate('/close-friends')}
-                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">Close Friends</h3>
-                      <p className="text-sm text-gray-600">Manage emergency contacts</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
+            
           </div>
         </div>
       </div>

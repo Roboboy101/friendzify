@@ -10,6 +10,7 @@ export class Chat {
     this.is_read = data.is_read;
     this.created_at = data.created_at;
     this.updated_at = data.updated_at;
+    this.created_at_epoch = data.created_at_epoch;
   }
 
   // Send a message
@@ -25,7 +26,8 @@ export class Chat {
       const messageData = await db.get(`
         SELECT cm.*, 
                sender.name as sender_name, sender.profile_picture as sender_picture,
-               receiver.name as receiver_name, receiver.profile_picture as receiver_picture
+               receiver.name as receiver_name, receiver.profile_picture as receiver_picture,
+               (strftime('%s', cm.created_at) * 1000) as created_at_epoch
         FROM chat_messages cm
         JOIN users sender ON cm.sender_id = sender.id
         JOIN users receiver ON cm.receiver_id = receiver.id
@@ -46,7 +48,8 @@ export class Chat {
       const messages = await db.all(`
         SELECT cm.*, 
                sender.name as sender_name, sender.profile_picture as sender_picture,
-               receiver.name as receiver_name, receiver.profile_picture as receiver_picture
+               receiver.name as receiver_name, receiver.profile_picture as receiver_picture,
+               (strftime('%s', cm.created_at) * 1000) as created_at_epoch
         FROM chat_messages cm
         JOIN users sender ON cm.sender_id = sender.id
         JOIN users receiver ON cm.receiver_id = receiver.id
@@ -162,6 +165,7 @@ export class Chat {
       message_type: this.message_type,
       is_read: this.is_read,
       created_at: this.created_at,
+      created_at_epoch: this.created_at_epoch,
       updated_at: this.updated_at,
       sender_name: this.sender_name,
       sender_picture: this.sender_picture,
