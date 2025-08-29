@@ -61,6 +61,9 @@ const createTables = async () => {
         department TEXT,
         batch TEXT,
         free_schedule TEXT,
+        selected_courses TEXT, -- JSON string of selected course sections
+        course_visibility BOOLEAN DEFAULT TRUE, -- Show courses to friends
+        free_slot_visibility BOOLEAN DEFAULT TRUE, -- Show free slots to friends
         is_approved BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT TRUE,
         is_restricted BOOLEAN DEFAULT FALSE,
@@ -323,6 +326,24 @@ const createTables = async () => {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);
+
+    // Performance indexes to speed up chat
+    try {
+      await db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_cm_sender_receiver_created_at 
+          ON chat_messages(sender_id, receiver_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_cm_receiver_sender_created_at 
+          ON chat_messages(receiver_id, sender_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_cm_unread 
+          ON chat_messages(receiver_id, sender_id, is_read);
+        CREATE INDEX IF NOT EXISTS idx_friends_pair 
+          ON friends(user1_id, user2_id);
+        CREATE INDEX IF NOT EXISTS idx_friends_pair_rev 
+          ON friends(user2_id, user1_id);
+      `);
+    } catch (e) {
+      console.error('❌ Error creating performance indexes:', e);
+    }
 
     console.log('✅ Database tables created successfully');
   } catch (error) {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useSocket } from './SocketContext';
 import { notificationsAPI, chatAPI } from '../utils/api';
 
@@ -113,8 +113,8 @@ export const NotificationProvider = ({ children }) => {
     }
   };
 
-  // Mark all chat message notifications from a specific sender as read
-  const markChatNotificationsRead = async (senderId) => {
+  // Mark all chat message notifications from a specific sender as read (memoized)
+  const markChatNotificationsRead = useCallback(async (senderId) => {
     try {
       // Tell server to mark as read and dismiss
       await chatAPI.markAsRead(senderId);
@@ -137,7 +137,7 @@ export const NotificationProvider = ({ children }) => {
       })
     ));
     setUnreadBySender(prev => ({ ...prev, [parseInt(senderId)]: 0 }));
-  };
+  }, []); // Empty dependency - this function doesn't depend on any external values
 
   // Clear all notifications
   const clearAll = async () => {
@@ -353,22 +353,16 @@ export const NotificationProvider = ({ children }) => {
 
     // Dismiss message notifications when messages are read
     socket.on('dismiss_message_notifications', (data) => {
-      console.log('🔔 Received dismiss_message_notifications event:', data);
-      
       setNotifications(prev => {
         const updated = prev.map(notif => {
           if (notif.type === 'new_message' && 
               notif.data && 
               ((notif.data.sender && parseInt(notif.data.sender.id) === parseInt(data.senderId)) ||
                parseInt(notif.data.senderId) === parseInt(data.senderId))) {
-            console.log('✅ Dismissing notification:', notif.id, 'from sender:', data.senderId);
             return { ...notif, read: true };
           }
           return notif;
         });
-        
-        const dismissedCount = updated.filter(n => n.read).length - prev.filter(n => n.read).length;
-        console.log(`📋 Dismissed ${dismissedCount} notifications in frontend`);
         
         // reset local counter
         setUnreadBySender(prev => ({ ...prev, [parseInt(data.senderId)]: 0 }));

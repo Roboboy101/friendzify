@@ -12,6 +12,9 @@ export class User {
     this.department = data.department;
     this.batch = data.batch;
     this.free_schedule = data.free_schedule;
+    this.selected_courses = data.selected_courses;
+    this.course_visibility = data.course_visibility;
+    this.free_slot_visibility = data.free_slot_visibility;
     this.is_approved = data.is_approved;
     this.is_active = data.is_active;
     this.is_restricted = data.is_restricted;
@@ -132,7 +135,8 @@ export class User {
       
       const allowedFields = [
         'name', 'profile_picture', 'bio', 'department', 
-        'batch', 'free_schedule'
+        'batch', 'free_schedule', 'selected_courses', 
+        'course_visibility', 'free_slot_visibility'
       ];
       
       allowedFields.forEach(field => {

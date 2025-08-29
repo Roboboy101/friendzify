@@ -14,6 +14,8 @@ router.get('/conversations', async (req, res) => {
   try {
     const conversations = await Chat.getUserConversations(req.user.id);
     
+    // Only show conversations with current friends (security fix applied)
+    
     res.json({
       success: true,
       conversations
@@ -35,6 +37,7 @@ router.get('/conversation/:userId', async (req, res) => {
     
     // Check if users are friends
     const friendshipStatus = await Friend.getFriendshipStatus(req.user.id, parseInt(userId));
+    
     if (friendshipStatus !== 'friends') {
       return res.status(403).json({
         success: false,

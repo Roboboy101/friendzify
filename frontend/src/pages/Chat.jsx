@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { chatAPI, analyticsAPI } from '../utils/api';
 import OnlineStatus from '../components/OnlineStatus';
@@ -21,11 +21,13 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [chatError, setChatError] = useState(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
-  // Sort helper: unread first, then newest last message
-  const sortConversations = (list) => {
+  // Sort helper: unread first, then newest last message (memoized for stability)
+  const sortConversations = useCallback((list) => {
+    if (!Array.isArray(list)) return [];
     return [...list].sort((a, b) => {
       const aUnread = parseInt(a.unread_count || 0) > 0;
       const bUnread = parseInt(b.unread_count || 0) > 0;
@@ -34,14 +36,13 @@ const Chat = () => {
       const bt = new Date(b.last_message_time || 0).getTime();
       return bt - at;
     });
-  };
+  }, []); // Empty dependency array makes this stable
 
   // Socket listeners for real-time status updates
   useEffect(() => {
     if (socket && friend) {
       const handleUserOnline = ({ userId, isOnline, timestamp }) => {
         if (parseInt(userId) === parseInt(friend.id)) {
-          console.log('🔄 Friend status changed:', { userId, isOnline, timestamp })
           setOnlineStatus({
             isOnline,
             lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
@@ -51,7 +52,6 @@ const Chat = () => {
 
       const handleUserStatusChanged = ({ userId, isOnline, timestamp }) => {
         if (parseInt(userId) === parseInt(friend.id)) {
-          console.log('🔄 Friend status changed (status_changed):', { userId, isOnline, timestamp })
           setOnlineStatus({
             isOnline,
             lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
@@ -77,42 +77,100 @@ const Chat = () => {
     }
   }, []);
 
-  // Immediately set friend header & dismiss notifications when entering chat
+  // Set friend header when entering chat (navigation state only)
   useEffect(() => {
     if (userId) {
-      console.log(`🔔 User entered chat with ${userId} - immediately dismissing notifications`);
-      // Instant header from navigation state or cached conversations
+      // Only use navigation state for instant header (no conversations dependency)
       const navFriend = location.state?.friend;
       if (navFriend && parseInt(navFriend.id) === parseInt(userId)) {
         setFriend({ id: navFriend.id, name: navFriend.name, profile_picture: navFriend.profile_picture });
-      } else {
-        const match = conversations.find(c => parseInt(c.id) === parseInt(userId));
-        if (match) {
-          setFriend({ id: match.id, name: match.name, profile_picture: match.profile_picture });
-        }
       }
       // Use shared helper to clear both server + local for this sender
       markChatNotificationsRead(parseInt(userId));
-      // Reflect change in left panel unread badges
+    }
+  }, [userId, location.state, markChatNotificationsRead]);
+
+  // Separate effect: Update unread badges when userId changes
+  useEffect(() => {
+    if (userId) {
       setConversations(prev => sortConversations(prev.map(c => (
         parseInt(c.id) === parseInt(userId) ? { ...c, unread_count: 0 } : c
       ))));
     }
-  }, [userId, notifications, markChatNotificationsRead, location.state, conversations]);
+  }, [userId]); // Only depends on userId to avoid loops
 
-  // Load conversation (cancel stale request on fast navigation)
+  // Separate effect: Set friend from conversations when available (avoid friend dependency)
+  useEffect(() => {
+    if (userId && conversations.length > 0) {
+      const match = conversations.find(c => parseInt(c.id) === parseInt(userId));
+      if (match) {
+        setFriend(prev => {
+          // Only set if no friend is set or if this is a different user
+          if (!prev || prev.id !== match.id) {
+            return { id: match.id, name: match.name, profile_picture: match.profile_picture };
+          }
+          return prev;
+        });
+      }
+    }
+  }, [userId, conversations]); // REMOVED friend to prevent loops
+
+  // Load conversation quickly (cancel stale request on fast navigation)
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+
+    const fastSetFriendFromCache = () => {
+      const navFriend = location.state?.friend;
+      if (navFriend && parseInt(navFriend.id) === parseInt(userId)) {
+        setFriend({ id: navFriend.id, name: navFriend.name, profile_picture: navFriend.profile_picture });
+        return true;
+      }
+      // Use a stable snapshot of conversations to avoid dependency issues
+      const currentConversations = conversations;
+      if (currentConversations && currentConversations.length > 0) {
+        const match = currentConversations.find(c => parseInt(c.id) === parseInt(userId));
+        if (match) {
+          setFriend({ id: match.id, name: match.name, profile_picture: match.profile_picture });
+          return true;
+        }
+      }
+      return false;
+    };
+
     const loadConversation = async () => {
       if (!userId) return;
-      
+
+      // Set header ASAP if possible
+      fastSetFriendFromCache();
+
       try {
-        const response = await chatAPI.getConversation(userId, 30, 0);
-        const data = await response.json();
+        const response = await chatAPI.getConversation(userId, 30, 0, { signal: controller.signal });
         
+        // CRITICAL FIX: Handle non-2xx responses
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          console.error('Chat API Error:', response.status, errorData);
+          
+          if (response.status === 403) {
+            // Not friends - show appropriate message
+            setMessages([]);
+            setChatError({ type: 'not_friends', message: 'You can only chat with friends. Send a friend request first.' });
+            if (!cancelled) setLoading(false);
+            return;
+          } else if (response.status === 401) {
+            // Authentication issue - redirect to login
+            navigate('/login');
+            return;
+          }
+          throw new Error(`HTTP ${response.status}: ${errorData.message}`);
+        }
+
+        const data = await response.json();
         if (cancelled) return;
+        
         if (data.success) {
-          // Normalize created_at to epoch ms when available from API
+          setChatError(null); // Clear any previous errors
           const normalized = (data.messages || []).map(m => ({
             ...m,
             created_at: (typeof m.created_at_epoch !== 'undefined' && m.created_at_epoch !== null)
@@ -120,55 +178,50 @@ const Chat = () => {
               : m.created_at
           }));
           setMessages(normalized);
-          // Debug: log first 3 timestamps
-          try {
-            const sample = normalized.slice(0, 3);
-            sample.forEach((m, idx) => {
-              const d = parseTimestamp(m.created_at);
-              // eslint-disable-next-line no-console
-              console.log('[Chat] msg', idx, {
-                raw_created_at: m.created_at,
-                created_at_epoch: m.created_at_epoch,
-                parsed: d?.toISOString?.(),
-                local: d?.toLocaleString?.(),
-                tz_offset_min: new Date().getTimezoneOffset()
-              });
-            });
-          } catch {}
+
           if (data.messages.length > 0) {
-            // Get friend info from the first message
             const firstMessage = data.messages[0];
             const friendData = firstMessage.sender_id === currentUser?.id 
               ? { id: firstMessage.receiver_id, name: firstMessage.receiver_name, profile_picture: firstMessage.receiver_picture }
               : { id: firstMessage.sender_id, name: firstMessage.sender_name, profile_picture: firstMessage.sender_picture };
-            setFriend(friendData);
+            setFriend(prev => prev || friendData);
 
-            // Fetch initial activity status for this friend
-            try {
-              const resp = await analyticsAPI.getActivityStatus([friendData.id]);
-              const activity = await resp.json();
-              if (activity.success && Array.isArray(activity.data) && activity.data.length > 0) {
-                const u = activity.data[0];
-                setOnlineStatus({
-                  isOnline: Boolean(u.is_online),
-                  lastSeen: u.last_seen
-                });
-              }
-            } catch (e) {
-              console.warn('Chat: failed to load initial activity status', e);
-            }
+            // Fetch activity status in parallel, with timeout fallback
+            (async () => {
+              try {
+                const ac = new AbortController();
+                const t = setTimeout(() => ac.abort(), 1200);
+                const resp = await analyticsAPI.getActivityStatus([friendData.id], { signal: ac.signal });
+                const activity = await resp.json();
+                clearTimeout(t);
+                if (!cancelled && activity.success && Array.isArray(activity.data) && activity.data.length > 0) {
+                  const u = activity.data[0];
+                  setOnlineStatus({ isOnline: Boolean(u.is_online), lastSeen: u.last_seen });
+                }
+              } catch {}
+            })();
           }
+        } else {
+          console.error('Chat API returned success:false', data);
+          setChatError({ type: 'api_error', message: data.message || 'Failed to load chat' });
+          setMessages([]);
         }
       } catch (error) {
-        console.error('Error loading conversation:', error);
+        if (error?.name !== 'AbortError') {
+          console.error('Error loading conversation:', error);
+          setChatError({ type: 'network_error', message: 'Network error. Check your connection.' });
+          setMessages([]);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     loadConversation();
-    return () => { cancelled = true; };
-  }, [userId, currentUser]);
+    return () => { cancelled = true; controller.abort(); };
+  }, [userId, currentUser, location.state]); // REMOVED conversations to prevent infinite loop
 
   // Load conversations for left panel
   useEffect(() => {
@@ -189,15 +242,18 @@ const Chat = () => {
 
   // If friend picture is missing, try to hydrate from conversations list
   useEffect(() => {
-    if (!friend || friend.profile_picture) return;
+    if (!userId) return;
     const match = conversations.find(c => parseInt(c.id) === parseInt(userId));
-    if (match) {
-      setFriend(prev => ({
-        ...prev,
-        profile_picture: match.profile_picture
-      }));
+    if (match && match.profile_picture) {
+      setFriend(prev => {
+        // Only update if friend exists and picture is different/missing
+        if (prev && (!prev.profile_picture || prev.profile_picture !== match.profile_picture)) {
+          return { ...prev, profile_picture: match.profile_picture };
+        }
+        return prev;
+      });
     }
-  }, [friend, conversations, userId]);
+  }, [conversations, userId]); // Safer: only depends on conversations and userId
 
   // Socket event listeners
   useEffect(() => {
@@ -205,19 +261,30 @@ const Chat = () => {
 
     const handleNewMessage = (data) => {
       const activeId = parseInt(userId);
-      if (data.senderId === activeId || data.receiverId === activeId) {
+      const senderId = parseInt(data.senderId);
+      const receiverId = parseInt(data.receiverId);
+      
+      if (senderId === activeId || receiverId === activeId) {
         setMessages(prev => {
-          // Remove any temporary messages with the same content to avoid duplicates
-          const filtered = prev.filter(msg => !(msg.isTemporary && msg.message === data.message));
+          // Remove any temporary messages with the same content and sender to avoid duplicates
+          const filtered = prev.filter(msg => 
+            !(msg.isTemporary && msg.message === data.message && msg.sender_id === senderId)
+          );
+          
+          // Determine sender info based on whether this is from current user or friend
+          const isFromCurrentUser = senderId === parseInt(currentUser?.id);
+          const senderName = isFromCurrentUser ? currentUser?.name : friend?.name;
+          const senderPicture = isFromCurrentUser ? currentUser?.profile_picture : friend?.profile_picture;
+          
           return [...filtered, {
             id: data.messageId || Date.now(),
-            sender_id: data.senderId,
-            receiver_id: data.receiverId,
+            sender_id: senderId,
+            receiver_id: receiverId,
             message: data.message,
             message_type: data.messageType || 'text',
             created_at: data.timestampMs || data.timestamp || Date.now(),
-            sender_name: friend?.name,
-            sender_picture: friend?.profile_picture
+            sender_name: senderName,
+            sender_picture: senderPicture
           }];
         });
       }
@@ -476,7 +543,25 @@ const Chat = () => {
         {/* Messages Area */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 ? (
+            {chatError ? (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Cannot Load Chat</h3>
+                <p className="text-gray-600 mb-4">{chatError.message}</p>
+                {chatError.type === 'not_friends' && (
+                  <button
+                    onClick={() => navigate('/friends')}
+                    className="inline-flex items-center px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+                  >
+                    Go to Friends
+                  </button>
+                )}
+              </div>
+            ) : messages.length === 0 ? (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -526,36 +611,38 @@ const Chat = () => {
           </div>
 
           {/* Message Input */}
-          <div className="border-t border-gray-200 bg-white p-4">
-            <form onSubmit={handleSendMessage} className="flex space-x-3">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  value={newMessage}
-                  onChange={(e) => {
-                    setNewMessage(e.target.value);
-                    handleTyping();
-                  }}
-                  placeholder="Type a message..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  disabled={sending}
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={!newMessage.trim() || sending}
-                className="px-6 py-3 bg-primary-600 text-white rounded-full hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {sending ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                )}
-              </button>
-            </form>
-          </div>
+          {!chatError && (
+            <div className="border-t border-gray-200 bg-white p-4">
+              <form onSubmit={handleSendMessage} className="flex space-x-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value);
+                      handleTyping();
+                    }}
+                    placeholder="Type a message..."
+                    className="w-full px-4 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    disabled={sending}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!newMessage.trim() || sending}
+                  className="px-6 py-3 bg-primary-600 text-white rounded-full hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {sending ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  )}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </div>

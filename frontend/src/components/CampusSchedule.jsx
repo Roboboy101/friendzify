@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react'
-import { userAPI } from '../utils/api'
+import { userAPI, courseAPI } from '../utils/api'
+import CourseSelection from './CourseSelection'
 
 const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) => {
   const [selectedSlots, setSelectedSlots] = useState([])
+  const [occupiedSlots, setOccupiedSlots] = useState([]) // Course-blocked slots
+  const [selectedCourses, setSelectedCourses] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [showCourseSelection, setShowCourseSelection] = useState(false)
+  const [courseVisibility, setCourseVisibility] = useState(true)
+  const [freeSlotVisibility, setFreeSlotVisibility] = useState(true)
+  const [visibilityLoading, setVisibilityLoading] = useState(false)
 
   // Campus schedule structure (Saturday to Thursday)
   const scheduleData = {
@@ -69,12 +76,37 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
   const days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday']
 
   useEffect(() => {
+    if (isOpen) {
+      loadMyCourses()
+    }
     if (currentSchedule) {
       // Parse current schedule to get selected slots
       const slots = parseCurrentSchedule(currentSchedule)
       setSelectedSlots(slots)
     }
-  }, [currentSchedule])
+  }, [currentSchedule, isOpen])
+
+  // Load courses on component mount for persistence
+  useEffect(() => {
+    loadMyCourses()
+  }, []) // Empty dependency array = runs once on mount, regardless of modal state
+
+  const loadMyCourses = async () => {
+    try {
+      const response = await courseAPI.getMyCourses()
+      const data = await response.json()
+      
+      if (data.success) {
+        setSelectedCourses(data.selectedCourses || [])
+        setOccupiedSlots(data.occupiedSlots || [])
+        // Backend now sends proper boolean values
+        setCourseVisibility(data.courseVisibility)
+        setFreeSlotVisibility(data.freeSlotVisibility)
+      }
+    } catch (error) {
+      console.error('Load my courses error:', error)
+    }
+  }
 
   const parseCurrentSchedule = (schedule) => {
     if (!schedule) return []
@@ -93,6 +125,17 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
   }
 
   const handleSlotClick = (slotId) => {
+    // Prevent clicking on course-occupied slots
+    if (occupiedSlots.includes(slotId)) {
+      return
+    }
+
+    // Require at least 1 course to be selected before allowing free slot selection
+    if (selectedCourses.length === 0) {
+      setError('Please select at least 1 course before choosing free slots')
+      return
+    }
+
     setSelectedSlots(prev => {
       if (prev.includes(slotId)) {
         return prev.filter(id => id !== slotId)
@@ -104,18 +147,59 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
     setSuccess('')
   }
 
-  const handleSelectDay = (day) => {
-    const daySlots = scheduleData[day].map(slot => slot.id)
-    const allSelected = daySlots.every(slotId => selectedSlots.includes(slotId))
+  const handleCoursesSelected = (courses, courseOccupiedSlots) => {
+    setSelectedCourses(courses)
+    setOccupiedSlots(courseOccupiedSlots)
+    setShowCourseSelection(false)
     
-    if (allSelected) {
-      // Deselect all slots for this day
-      setSelectedSlots(prev => prev.filter(slotId => !daySlots.includes(slotId)))
+    // Remove any free slots that conflict with course slots
+    setSelectedSlots(prev => prev.filter(slotId => !courseOccupiedSlots.includes(slotId)))
+  }
+
+  const updateVisibility = async (newCourseVisibility, newFreeSlotVisibility) => {
+    if (visibilityLoading) return; // Prevent multiple requests
+    
+    try {
+      setVisibilityLoading(true)
+      const response = await courseAPI.updateVisibility(newCourseVisibility, newFreeSlotVisibility)
+      const data = await response.json()
+      
+      if (data.success) {
+        setCourseVisibility(newCourseVisibility)
+        setFreeSlotVisibility(newFreeSlotVisibility)
+        setSuccess('Visibility settings updated successfully!')
+        setTimeout(() => setSuccess(''), 3000)
+      } else {
+        setError(data.message || 'Failed to update visibility settings')
+        setTimeout(() => setError(''), 3000)
+      }
+    } catch (error) {
+      setError('Failed to update visibility settings')
+      setTimeout(() => setError(''), 3000)
+    } finally {
+      setVisibilityLoading(false)
+    }
+  }
+
+  const handleSelectDay = (day) => {
+    // Require at least 1 course to be selected before allowing free slot selection
+    if (selectedCourses.length === 0) {
+      setError('Please select at least 1 course before choosing free slots')
+      return
+    }
+
+    const daySlots = scheduleData[day].map(slot => slot.id)
+    const availableSlots = daySlots.filter(slotId => !occupiedSlots.includes(slotId))
+    const allAvailableSelected = availableSlots.every(slotId => selectedSlots.includes(slotId))
+    
+    if (allAvailableSelected) {
+      // Deselect all available slots for this day
+      setSelectedSlots(prev => prev.filter(slotId => !availableSlots.includes(slotId)))
     } else {
-      // Select all slots for this day
+      // Select all available slots for this day (skip occupied ones)
       setSelectedSlots(prev => {
         const newSlots = [...prev]
-        daySlots.forEach(slotId => {
+        availableSlots.forEach(slotId => {
           if (!newSlots.includes(slotId)) {
             newSlots.push(slotId)
           }
@@ -222,26 +306,156 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
           )}
 
           {/* Controls */}
+          {/* Course Selection Button */}
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-blue-900">Course & Section Selection</h3>
+                <p className="text-sm text-blue-700 mt-1">
+                  {selectedCourses.length > 0 
+                    ? `${selectedCourses.length} courses selected (${selectedCourses.reduce((sum, c) => sum + (c.courseCredit || 3), 0)} credits)`
+                    : 'Select your courses first to block class times'
+                  }
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCourseSelection(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                {selectedCourses.length > 0 ? 'Edit Courses' : 'Select Courses'}
+              </button>
+            </div>
+          </div>
+
+          {/* Visibility Controls */}
+          {selectedCourses.length > 0 && (
+            <div className="mb-6 p-5 bg-gradient-to-r from-gray-50 to-blue-50 border border-gray-200 rounded-xl shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900 flex items-center">
+                  <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  Friend Visibility Settings
+                </h3>
+                {visibilityLoading && (
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm">Updating...</span>
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-4">
+                {/* Course Visibility Toggle */}
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C20.832 18.477 19.246 18 17.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">Show my courses to friends</label>
+                      <p className="text-xs text-gray-500">Let friends see your enrolled courses and schedules</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <div className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      courseVisibility 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {courseVisibility ? 'Visible' : 'Hidden'}
+                    </div>
+                    
+                    {/* Modern Toggle Switch */}
+                    <button
+                      type="button"
+                      onClick={() => updateVisibility(!courseVisibility, freeSlotVisibility)}
+                      disabled={visibilityLoading}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
+                        courseVisibility ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          courseVisibility ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Free Slot Visibility Toggle */}
+                <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-gray-900">Show my free slots to friends</label>
+                      <p className="text-xs text-gray-500">Let friends see when you're available for meetups</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center space-x-3">
+                    <div className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      freeSlotVisibility 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {freeSlotVisibility ? 'Visible' : 'Hidden'}
+                    </div>
+                    
+                    {/* Modern Toggle Switch */}
+                    <button
+                      type="button"
+                      onClick={() => updateVisibility(courseVisibility, !freeSlotVisibility)}
+                      disabled={visibilityLoading}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 ${
+                        freeSlotVisibility ? 'bg-green-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          freeSlotVisibility ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-4">
               <span className="text-sm font-medium text-gray-700">
-                Selected: {selectedSlots.length} slots
+                Free slots: {selectedSlots.length} selected
               </span>
               <button
                 onClick={handleClearAll}
                 className="text-sm text-red-600 hover:text-red-700 font-medium"
               >
-                Clear All
+                Clear All Free Slots
               </button>
             </div>
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
+            <div className="flex items-center space-x-4 text-sm text-gray-600">
               <div className="flex items-center space-x-1">
                 <div className="w-4 h-4 bg-primary-100 border border-primary-300 rounded"></div>
                 <span>Available</span>
               </div>
               <div className="flex items-center space-x-1">
-                <div className="w-4 h-4 bg-primary-600 rounded"></div>
-                <span>Selected</span>
+                <div className="w-4 h-4 bg-green-600 rounded"></div>
+                <span>Free Time</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-4 h-4 bg-orange-100 border border-orange-300 rounded"></div>
+                <span>Course</span>
               </div>
             </div>
           </div>
@@ -278,18 +492,27 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
                     {days.map(day => {
                       const slot = scheduleData[day][timeIndex]
                       const isSelected = selectedSlots.includes(slot.id)
+                      const isOccupied = occupiedSlots.includes(slot.id)
                       
                       return (
                         <td key={`${day}-${timeIndex}`} className="py-2 px-2 border-b border-gray-100">
                           <button
                             onClick={() => handleSlotClick(slot.id)}
-                            className={`w-full h-12 rounded-lg border-2 transition-all duration-200 hover:scale-105 ${
-                              isSelected
-                                ? 'bg-primary-600 border-primary-600 text-white shadow-lg'
-                                : 'bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100 hover:border-primary-300'
+                            disabled={isOccupied}
+                            className={`w-full h-12 rounded-lg border-2 transition-all duration-200 ${
+                              isOccupied
+                                ? 'bg-orange-100 border-orange-300 text-orange-600 cursor-not-allowed'
+                                : isSelected
+                                  ? 'bg-green-600 border-green-600 text-white shadow-lg hover:scale-105'
+                                  : 'bg-primary-50 border-primary-200 text-primary-700 hover:bg-primary-100 hover:border-primary-300 hover:scale-105'
                             }`}
+                            title={isOccupied ? 'Occupied by course' : isSelected ? 'Selected as free time' : 'Click to select as free time'}
                           >
-                            {isSelected ? (
+                            {isOccupied ? (
+                              <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C20.832 18.477 19.246 18 17.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                              </svg>
+                            ) : isSelected ? (
                               <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                               </svg>
@@ -355,6 +578,15 @@ const CampusSchedule = ({ isOpen, onClose, currentSchedule, onScheduleUpdate }) 
           </div>
         </div>
       </div>
+
+      {/* Course Selection Modal */}
+      <CourseSelection
+        isOpen={showCourseSelection}
+        onClose={() => setShowCourseSelection(false)}
+        onCoursesSelected={handleCoursesSelected}
+        initialSelectedCourses={selectedCourses}
+        initialOccupiedSlots={occupiedSlots}
+      />
     </div>
   )
 }

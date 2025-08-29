@@ -26,10 +26,8 @@ export const apiCall = async (endpoint, options = {}) => {
   let token
   if (endpoint.includes('/admin/') || endpoint.includes('/analytics/')) {
     token = localStorage.getItem('adminToken') || localStorage.getItem('userToken')
-    console.log('🔑 Using admin-priority token for:', endpoint, token ? 'Found' : 'Missing')
   } else {
     token = localStorage.getItem('userToken') || localStorage.getItem('adminToken')
-    console.log('🔑 Using user-priority token for:', endpoint, token ? 'Found' : 'Missing')
   }
   
   if (token) {
@@ -291,8 +289,8 @@ export const chatAPI = {
   getConversations: () => 
     apiCall('/api/chat/conversations'),
 
-  getConversation: (userId, limit = 50, offset = 0) => 
-    apiCall(`/api/chat/conversation/${userId}?limit=${limit}&offset=${offset}`),
+  getConversation: (userId, limit = 50, offset = 0, options = {}) => 
+    apiCall(`/api/chat/conversation/${userId}?limit=${limit}&offset=${offset}`, options),
 
   sendMessage: (receiverId, message, messageType = 'text') => 
     apiCall('/api/chat/send', {
@@ -489,4 +487,46 @@ export const notificationsAPI = {
     })
 };
 
-export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI, adminSosAPI, userReportsAPI, adminReportsAPI, meetupsAPI, notificationsAPI }
+// Course API calls
+export const courseAPI = {
+  getAllCourses: (search = '') => {
+    const params = search ? `?search=${encodeURIComponent(search)}` : '';
+    return apiCall(`/api/courses${params}`);
+  },
+
+  getCourseSections: (courseCode) => 
+    apiCall(`/api/courses/${courseCode}/sections`),
+
+  getSectionDetails: (sectionId) => 
+    apiCall(`/api/courses/sections/${sectionId}`),
+
+  saveSelectedCourses: (selectedCourses, courseVisibility = true, freeSlotVisibility = true) => 
+    apiCall('/api/courses/select', {
+      method: 'POST',
+      body: JSON.stringify({
+        selectedCourses,
+        courseVisibility,
+        freeSlotVisibility
+      })
+    }),
+
+  getMyCourses: () => 
+    apiCall('/api/courses/my-courses'),
+
+  updateVisibility: (courseVisibility, freeSlotVisibility) => 
+    apiCall('/api/courses/visibility', {
+      method: 'PUT',
+      body: JSON.stringify({
+        courseVisibility,
+        freeSlotVisibility
+      })
+    }),
+
+  checkConflicts: (sectionIds) => 
+    apiCall('/api/courses/check-conflicts', {
+      method: 'POST',
+      body: JSON.stringify({ sectionIds })
+    })
+};
+
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI, adminSosAPI, userReportsAPI, adminReportsAPI, meetupsAPI, notificationsAPI, courseAPI }

@@ -74,7 +74,8 @@ router.put('/profile', async (req, res) => {
   try {
     const allowedUpdates = [
       'name', 'profile_picture', 'bio', 'department', 
-      'batch', 'free_schedule'
+      'batch', 'free_schedule', 'selected_courses',
+      'course_visibility', 'free_slot_visibility'
     ];
     
     const updates = {};

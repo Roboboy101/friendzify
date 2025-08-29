@@ -20,6 +20,7 @@ import adminReportsRoutes from './routes/adminReports.js';
 import userReportsRoutes from './routes/userReports.js';
 import meetupsRoutes from './routes/meetups.js';
 import notificationsRoutes from './routes/notifications.js';
+import coursesRoutes from './routes/courses.js';
 import ReminderService from './services/reminderService.js';
 
 // Load environment variables
@@ -61,6 +62,7 @@ app.use('/api/admin/feedback-reports', adminReportsRoutes);
 app.use('/api/reports', userReportsRoutes);
 app.use('/api/meetups', meetupsRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/courses', coursesRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -141,28 +143,24 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Send message to receiver if they're online
-      const receiverSocketId = connectedUsers.get(parseInt(receiverId));
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('new_message', {
-          senderId,
-          receiverId,
-          message,
-          messageType,
-          timestamp: new Date().toISOString(),
-          timestampMs: Date.now(),
-          messageId: Date.now() // Add unique message ID
-        });
-      }
-      
-      // Acknowledge to sender
-      socket.emit('message_sent', {
-        receiverId,
+      const messageData = {
+        senderId,
+        receiverId: parseInt(receiverId),
         message,
         messageType,
         timestamp: new Date().toISOString(),
-        timestampMs: Date.now()
-      });
+        timestampMs: Date.now(),
+        messageId: Date.now() + Math.random() // Add unique message ID
+      };
+      
+      // Send message to receiver if they're online
+      const receiverSocketId = connectedUsers.get(parseInt(receiverId));
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit('new_message', messageData);
+      }
+      
+      // Also send to sender for real-time update
+      socket.emit('new_message', messageData);
       
     } catch (error) {
       console.error('Socket message error:', error);

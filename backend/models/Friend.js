@@ -186,6 +186,7 @@ class Friend {
     const friends = await db.all(`
       SELECT 
         u.id, u.name, u.email, u.profile_picture, u.bio, u.department, u.batch, u.free_schedule,
+        u.selected_courses, u.course_visibility, u.free_slot_visibility,
         f.created_at as friendship_date
       FROM friends f
       JOIN users u ON (

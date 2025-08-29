@@ -65,7 +65,7 @@ export class Chat {
     }
   }
 
-  // Get all chat conversations for a user (with last message)
+  // Get all chat conversations for a user (with last message) - ONLY with current friends
   static async getUserConversations(userId) {
     const db = getDatabase();
     
@@ -95,8 +95,15 @@ export class Chat {
           (cm.sender_id = ? AND cm.receiver_id = u.id) OR 
           (cm.sender_id = u.id AND cm.receiver_id = ?)
         ) AND cm.created_at = lm.last_message_time
+        -- CRITICAL FIX: Only show conversations with current friends
+        WHERE EXISTS (
+          SELECT 1 FROM friends f 
+          WHERE (f.user1_id = ? AND f.user2_id = u.id) 
+             OR (f.user2_id = ? AND f.user1_id = u.id)
+        )
+        AND u.is_active = 1
         ORDER BY lm.last_message_time DESC
-      `, [userId, userId, userId, userId, userId, userId]);
+      `, [userId, userId, userId, userId, userId, userId, userId, userId]);
 
       return conversations;
     } catch (error) {
