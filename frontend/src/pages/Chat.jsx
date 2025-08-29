@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { chatAPI, analyticsAPI } from '../utils/api';
 import OnlineStatus from '../components/OnlineStatus';
 import { useSocket } from '../contexts/SocketContext';
@@ -10,6 +10,7 @@ const Chat = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const location = useLocation();
   const { notifications, markAsRead, markChatNotificationsRead } = useNotifications();
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
@@ -22,6 +23,18 @@ const Chat = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  // Sort helper: unread first, then newest last message
+  const sortConversations = (list) => {
+    return [...list].sort((a, b) => {
+      const aUnread = parseInt(a.unread_count || 0) > 0;
+      const bUnread = parseInt(b.unread_count || 0) > 0;
+      if (aUnread !== bUnread) return bUnread ? 1 : -1;
+      const at = new Date(a.last_message_time || 0).getTime();
+      const bt = new Date(b.last_message_time || 0).getTime();
+      return bt - at;
+    });
+  };
 
   // Socket listeners for real-time status updates
   useEffect(() => {
@@ -64,24 +77,40 @@ const Chat = () => {
     }
   }, []);
 
-  // Immediately dismiss notifications when entering chat
+  // Immediately set friend header & dismiss notifications when entering chat
   useEffect(() => {
     if (userId) {
       console.log(`🔔 User entered chat with ${userId} - immediately dismissing notifications`);
+      // Instant header from navigation state or cached conversations
+      const navFriend = location.state?.friend;
+      if (navFriend && parseInt(navFriend.id) === parseInt(userId)) {
+        setFriend({ id: navFriend.id, name: navFriend.name, profile_picture: navFriend.profile_picture });
+      } else {
+        const match = conversations.find(c => parseInt(c.id) === parseInt(userId));
+        if (match) {
+          setFriend({ id: match.id, name: match.name, profile_picture: match.profile_picture });
+        }
+      }
       // Use shared helper to clear both server + local for this sender
       markChatNotificationsRead(parseInt(userId));
+      // Reflect change in left panel unread badges
+      setConversations(prev => sortConversations(prev.map(c => (
+        parseInt(c.id) === parseInt(userId) ? { ...c, unread_count: 0 } : c
+      ))));
     }
-  }, [userId, notifications, markChatNotificationsRead]);
+  }, [userId, notifications, markChatNotificationsRead, location.state, conversations]);
 
-  // Load conversation
+  // Load conversation (cancel stale request on fast navigation)
   useEffect(() => {
+    let cancelled = false;
     const loadConversation = async () => {
       if (!userId) return;
       
       try {
-        const response = await chatAPI.getConversation(userId);
+        const response = await chatAPI.getConversation(userId, 30, 0);
         const data = await response.json();
         
+        if (cancelled) return;
         if (data.success) {
           // Normalize created_at to epoch ms when available from API
           const normalized = (data.messages || []).map(m => ({
@@ -133,27 +162,29 @@ const Chat = () => {
       } catch (error) {
         console.error('Error loading conversation:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadConversation();
+    return () => { cancelled = true; };
   }, [userId, currentUser]);
 
   // Load conversations for left panel
   useEffect(() => {
-    const loadConversations = async () => {
+    const loadAndSortConversations = async () => {
       try {
         const res = await chatAPI.getConversations();
         const data = await res.json();
         if (data.success) {
-          setConversations(data.conversations || []);
+          const convs = Array.isArray(data.conversations) ? data.conversations : [];
+          setConversations(sortConversations(convs));
         }
       } catch (e) {
         console.error('Error loading conversations:', e);
       }
     };
-    loadConversations();
+    loadAndSortConversations();
   }, []);
 
   // If friend picture is missing, try to hydrate from conversations list
@@ -190,6 +221,27 @@ const Chat = () => {
           }];
         });
       }
+
+      // Update left panel conversations in real-time
+      setConversations(prev => {
+        const meId = currentUser?.id;
+        if (!meId) return prev;
+        const isIncoming = parseInt(data.receiverId) === parseInt(meId);
+        const otherId = parseInt(data.senderId) === parseInt(meId) ? parseInt(data.receiverId) : parseInt(data.senderId);
+        const nowIso = new Date(data.timestamp || Date.now()).toISOString();
+        let found = false;
+        const updated = prev.map(c => {
+          if (parseInt(c.id) === otherId) {
+            found = true;
+            const inc = isIncoming && otherId !== parseInt(userId) ? 1 : 0;
+            const nextUnread = Math.max(0, parseInt(c.unread_count || 0) + inc);
+            return { ...c, last_message: data.message, last_message_time: nowIso, last_sender_id: data.senderId, unread_count: nextUnread };
+          }
+          return c;
+        });
+        const list = found ? updated : [{ id: otherId, name: '', profile_picture: '', last_message: data.message, last_message_time: nowIso, last_sender_id: data.senderId, unread_count: isIncoming ? 1 : 0 }, ...updated];
+        return sortConversations(list);
+      });
     };
 
     const handleUserTyping = (data) => {
@@ -208,7 +260,7 @@ const Chat = () => {
       socket.off('new_message', handleNewMessage);
       socket.off('user_typing', handleUserTyping);
     };
-  }, [socket, userId, friend]);
+  }, [socket, userId, friend, currentUser]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -355,7 +407,11 @@ const Chat = () => {
               <button
                 key={c.id || c.other_user_id || c.user_id || c.name + c.last_message_time}
                 onClick={() => navigate(`/chat/${c.id}`)}
-                className={`w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-50 ${parseInt(userId) === parseInt(c.id) ? 'bg-gray-50' : ''}`}
+                className={`w-full px-4 py-3 flex items-center space-x-3 relative transition-colors
+                  ${parseInt(userId) === parseInt(c.id)
+                    ? 'bg-blue-50 border-l-2 border-primary-600'
+                    : 'hover:bg-gray-50 border-l-2 border-transparent'}`}
+                aria-current={parseInt(userId) === parseInt(c.id) ? 'true' : 'false'}
               >
                 <Avatar 
                   src={c?.profile_picture ? `http://localhost:5001${c.profile_picture}` : ''}
@@ -364,10 +420,17 @@ const Chat = () => {
                 />
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
-                    <p className="text-xs text-gray-500 ml-2 truncate">{formatTime(c.last_message_time)}</p>
+                    <p className={`text-sm truncate ${parseInt(userId) === parseInt(c.id) ? 'font-semibold text-primary-700' : 'font-medium text-gray-900'}`}>{c.name}</p>
+                    <div className="flex items-center space-x-2 ml-2">
+                      {parseInt(c.unread_count || 0) > 0 && (
+                        <span className="bg-primary-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[1.1rem] h-4 flex items-center justify-center">
+                          {parseInt(c.unread_count) > 99 ? '99+' : parseInt(c.unread_count)}
+                        </span>
+                      )}
+                      <p className="text-xs text-gray-500 truncate">{formatTime(c.last_message_time)}</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-600 truncate">{c.last_message}</p>
+                  <p className={`text-xs truncate ${parseInt(c.unread_count || 0) > 0 ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>{c.last_message}</p>
                 </div>
               </button>
             ))
