@@ -29,6 +29,9 @@ const UserSignin = () => {
       const data = await authAPI.login(formData)
 
       if (data.success) {
+        // Clear any stray admin session to avoid conflicts
+        localStorage.removeItem('adminToken')
+        localStorage.removeItem('adminData')
         // Store token and user data
         localStorage.setItem('userToken', data.token)
         localStorage.setItem('userData', JSON.stringify(data.user))

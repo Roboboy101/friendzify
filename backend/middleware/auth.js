@@ -158,3 +158,6 @@ export const requireApprovedUser = async (req, res, next) => {
     });
   }
 };
+
+// Combined middleware for admin authentication
+export const requireAdminAuth = [verifyToken, requireAdmin];

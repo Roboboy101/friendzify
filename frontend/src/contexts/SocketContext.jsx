@@ -16,9 +16,13 @@ export const SocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Only initialize socket if user is authenticated
-    const token = localStorage.getItem('userToken');
-    if (!token) return;
+    // Initialize socket for:
+    // - logged-in users (with join)
+    // - logged-in admins (listen-only, no join)
+    const userToken = localStorage.getItem('userToken');
+    const adminToken = localStorage.getItem('adminToken');
+    const shouldInit = Boolean(userToken || adminToken);
+    if (!shouldInit) return;
 
     const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:5001', {
       transports: ['websocket', 'polling']
@@ -28,11 +32,13 @@ export const SocketProvider = ({ children }) => {
       console.log('Socket connected:', newSocket.id);
       setIsConnected(true);
       
-      // Join with user ID
-      const userData = localStorage.getItem('userData');
-      if (userData) {
-        const user = JSON.parse(userData);
-        newSocket.emit('join', user.id);
+      // Only users join; admins do not join so they are never counted online
+      if (userToken) {
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+          const user = JSON.parse(userData);
+          newSocket.emit('join', user.id);
+        }
       }
     });
 

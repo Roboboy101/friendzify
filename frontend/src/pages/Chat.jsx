@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { chatAPI } from '../utils/api';
+import { chatAPI, analyticsAPI } from '../utils/api';
+import OnlineStatus from '../components/OnlineStatus';
 import { useSocket } from '../contexts/SocketContext';
 import Avatar from '../components/Avatar';
 
@@ -11,12 +12,46 @@ const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [friend, setFriend] = useState(null);
+  const [onlineStatus, setOnlineStatus] = useState({ isOnline: false, lastSeen: null });
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  // Socket listeners for real-time status updates
+  useEffect(() => {
+    if (socket && friend) {
+      const handleUserOnline = ({ userId, isOnline, timestamp }) => {
+        if (parseInt(userId) === parseInt(friend.id)) {
+          console.log('🔄 Friend status changed:', { userId, isOnline, timestamp })
+          setOnlineStatus({
+            isOnline,
+            lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
+          })
+        }
+      }
+
+      const handleUserStatusChanged = ({ userId, isOnline, timestamp }) => {
+        if (parseInt(userId) === parseInt(friend.id)) {
+          console.log('🔄 Friend status changed (status_changed):', { userId, isOnline, timestamp })
+          setOnlineStatus({
+            isOnline,
+            lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
+          })
+        }
+      }
+
+      socket.on('user_online', handleUserOnline)
+      socket.on('user_status_changed', handleUserStatusChanged)
+
+      return () => {
+        socket.off('user_online', handleUserOnline)
+        socket.off('user_status_changed', handleUserStatusChanged)
+      }
+    }
+  }, [socket, friend])
 
   // Get current user data
   useEffect(() => {
@@ -62,16 +97,20 @@ const Chat = () => {
 
     const handleNewMessage = (data) => {
       if (data.senderId === parseInt(userId)) {
-        setMessages(prev => [...prev, {
-          id: Date.now(),
-          sender_id: data.senderId,
-          receiver_id: data.receiverId,
-          message: data.message,
-          message_type: data.messageType,
-          created_at: data.timestamp,
-          sender_name: friend?.name,
-          sender_picture: friend?.profile_picture
-        }]);
+        setMessages(prev => {
+          // Remove any temporary messages with the same content to avoid duplicates
+          const filtered = prev.filter(msg => !(msg.isTemporary && msg.message === data.message));
+          return [...filtered, {
+            id: data.messageId || Date.now(),
+            sender_id: data.senderId,
+            receiver_id: data.receiverId,
+            message: data.message,
+            message_type: data.messageType || 'text',
+            created_at: data.timestamp || new Date().toISOString(),
+            sender_name: friend?.name,
+            sender_picture: friend?.profile_picture
+          }];
+        });
       }
     };
 
@@ -117,7 +156,8 @@ const Chat = () => {
         message_type: 'text',
         created_at: new Date().toISOString(),
         sender_name: currentUser.name,
-        sender_picture: currentUser.profile_picture
+        sender_picture: currentUser.profile_picture,
+        isTemporary: true // Mark as temporary for potential removal
       };
       setMessages(prev => [...prev, tempMessage]);
 
@@ -135,7 +175,7 @@ const Chat = () => {
     } catch (error) {
       console.error('Error sending message:', error);
       // Remove failed message from UI
-      setMessages(prev => prev.filter(msg => msg.id !== Date.now()));
+      setMessages(prev => prev.filter(msg => !(msg.isTemporary && msg.message === messageText)));
     } finally {
       setSending(false);
     }
@@ -159,11 +199,14 @@ const Chat = () => {
   };
 
   const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // Ensure timestamp is treated as UTC and converted to local time
+    const date = new Date(timestamp + 'Z'); // Force UTC interpretation
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDate = (timestamp) => {
-    const date = new Date(timestamp);
+    // Ensure timestamp is treated as UTC and converted to local time
+    const date = new Date(timestamp + 'Z'); // Force UTC interpretation
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -210,6 +253,12 @@ const Chat = () => {
                   />
                   <div>
                     <h1 className="text-lg font-semibold text-gray-900">{friend.name}</h1>
+                    <OnlineStatus 
+                      isOnline={onlineStatus.isOnline}
+                      lastSeen={onlineStatus.lastSeen}
+                      size="sm"
+                      className="mt-1"
+                    />
                     {isTyping && (
                       <p className="text-sm text-primary-600">typing...</p>
                     )}

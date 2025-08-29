@@ -205,6 +205,41 @@ const createTables = async () => {
       )
     `);
 
+    // Add activity tracking columns to users table if they don't exist
+    const activityColumns = [
+      'is_online INTEGER DEFAULT 0',
+      'last_seen DATETIME',
+      'total_login_time INTEGER DEFAULT 0',
+      'session_count INTEGER DEFAULT 0'
+    ];
+
+    for (const column of activityColumns) {
+      const columnName = column.split(' ')[0];
+      try {
+        await db.run(`ALTER TABLE users ADD COLUMN ${column}`);
+        console.log(`✅ Added activity column ${columnName} to users table`);
+      } catch (error) {
+        if (!error.message.includes('duplicate column name')) {
+          console.error(`❌ Error adding activity column ${columnName}:`, error.message);
+        }
+      }
+    }
+
+    // Create user_activity_logs table for detailed analytics
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS user_activity_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        action_type TEXT NOT NULL CHECK(action_type IN ('login', 'logout', 'page_view', 'feature_use')),
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        ip_address TEXT,
+        user_agent TEXT,
+        session_duration INTEGER,
+        additional_data TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
     console.log('✅ Database tables created successfully');
   } catch (error) {
     console.error('❌ Error creating tables:', error);

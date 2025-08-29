@@ -25,6 +25,12 @@ export class User {
     this.approved_by = data.approved_by;
     this.created_at = data.created_at;
     this.updated_at = data.updated_at;
+    
+    // Activity tracking fields
+    this.is_online = data.is_online || 0;
+    this.last_seen = data.last_seen || null;
+    this.total_login_time = data.total_login_time || 0;
+    this.session_count = data.session_count || 0;
   }
 
   // Create new user
@@ -348,6 +354,220 @@ export class User {
       return users.map(user => new User(user));
     } catch (error) {
       throw error;
+    }
+  }
+
+  // Update online status
+  async setOnlineStatus(isOnline) {
+    const db = getDatabase();
+    
+    try {
+      await db.run(`
+        UPDATE users 
+        SET is_online = ?, last_seen = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [isOnline ? 1 : 0, this.id]);
+      
+      return await User.findById(this.id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Log user activity
+  async logActivity(actionType, ipAddress = null, userAgent = null, additionalData = null) {
+    const db = getDatabase();
+    
+    try {
+      await db.run(`
+        INSERT INTO user_activity_logs (user_id, action_type, ip_address, user_agent, additional_data)
+        VALUES (?, ?, ?, ?, ?)
+      `, [this.id, actionType, ipAddress, userAgent, additionalData ? JSON.stringify(additionalData) : null]);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Update session stats
+  async updateSessionStats(sessionDuration = null) {
+    const db = getDatabase();
+    
+    try {
+      const updates = ['session_count = session_count + 1'];
+      const values = [];
+      
+      if (sessionDuration) {
+        updates.push('total_login_time = total_login_time + ?');
+        values.push(sessionDuration);
+      }
+      
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(this.id);
+      
+      await db.run(`
+        UPDATE users 
+        SET ${updates.join(', ')}
+        WHERE id = ?
+      `, values);
+      
+      return await User.findById(this.id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get users with activity status for friends list
+  static async getUsersWithActivityStatus(userIds = []) {
+    const db = getDatabase();
+    
+    try {
+      let query = `
+        SELECT id, name, profile_picture, is_online, last_seen, updated_at
+        FROM users 
+        WHERE is_approved = TRUE AND is_active = TRUE
+      `;
+      let params = [];
+      
+      if (userIds.length > 0) {
+        query += ` AND id IN (${userIds.map(() => '?').join(',')})`;
+        params = userIds;
+      }
+      
+      query += ' ORDER BY is_online DESC, last_seen DESC';
+      
+      const users = await db.all(query, params);
+      return users;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get analytics data for admin
+  static async getAnalytics(days = 30) {
+    const db = getDatabase();
+    
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      const startDateStr = startDate.toISOString();
+      
+      // Get hourly activity for peak usage
+      const hourlyActivity = await db.all(`
+        SELECT 
+          strftime('%H', timestamp) as hour,
+          COUNT(*) as activity_count
+        FROM user_activity_logs 
+        WHERE timestamp >= ? AND action_type IN ('login', 'page_view', 'feature_use')
+        GROUP BY hour
+        ORDER BY hour
+      `, [startDateStr]);
+      
+      // Get daily login counts
+      const dailyLogins = await db.all(`
+        SELECT 
+          DATE(timestamp) as date,
+          COUNT(DISTINCT user_id) as unique_users,
+          COUNT(*) as total_logins
+        FROM user_activity_logs 
+        WHERE timestamp >= ? AND action_type = 'login'
+        GROUP BY DATE(timestamp)
+        ORDER BY date DESC
+      `, [startDateStr]);
+      
+              // Clean up stale online status (users online for more than 30 minutes without activity)
+      await db.run(`
+        UPDATE users 
+        SET is_online = 0 
+        WHERE is_online = 1 
+          AND last_seen < datetime('now', '-30 minutes')
+          AND is_approved = TRUE 
+          AND is_active = TRUE
+      `);
+  
+      // Get current online users (EXCLUDE admins)
+      const onlineUsers = await db.get(`
+        SELECT COUNT(*) as count
+        FROM users 
+        WHERE is_online = 1 
+          AND is_approved = TRUE 
+          AND is_active = TRUE
+      `);
+      
+      // Get average session duration
+      const avgSessionDuration = await db.get(`
+        SELECT AVG(session_duration) as avg_duration
+        FROM user_activity_logs 
+        WHERE timestamp >= ? AND session_duration IS NOT NULL
+      `, [startDateStr]);
+      
+      // Get most active users
+      const mostActiveUsers = await db.all(`
+        SELECT 
+          u.id, u.name, u.email,
+          COUNT(al.id) as activity_count,
+          u.total_login_time,
+          u.session_count,
+          u.last_seen
+        FROM users u
+        LEFT JOIN user_activity_logs al ON u.id = al.user_id AND al.timestamp >= ?
+        WHERE u.is_approved = TRUE
+        GROUP BY u.id, u.name, u.email, u.total_login_time, u.session_count, u.last_seen
+        ORDER BY activity_count DESC, u.total_login_time DESC
+        LIMIT 10
+      `, [startDateStr]);
+      
+      return {
+        hourlyActivity,
+        dailyLogins,
+        onlineUsers: onlineUsers.count || 0,
+        avgSessionDuration: avgSessionDuration.avg_duration || 0,
+        mostActiveUsers,
+        period: `${days} days`
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get current online users count only (excluding admins)
+  static async getOnlineUsersCount() {
+    const db = getDatabase();
+    
+    try {
+      // Clean up stale online status first
+      await db.run(`
+        UPDATE users 
+        SET is_online = 0 
+        WHERE is_online = 1 
+          AND last_seen < datetime('now', '-15 minutes')
+          AND is_approved = TRUE 
+          AND is_active = TRUE
+      `);
+      
+      // Get current online users count
+      const result = await db.get(`
+        SELECT COUNT(*) as count
+        FROM users 
+        WHERE is_online = 1 
+          AND is_approved = TRUE 
+          AND is_active = TRUE
+      `);
+      
+      // Get total online users (including admins) for comparison
+      const totalOnline = await db.get(`
+        SELECT COUNT(*) as count
+        FROM users 
+        WHERE is_online = 1 AND is_approved = TRUE AND is_active = TRUE
+      `);
+      
+      // Debug logging
+      console.log('📊 User.getOnlineUsersCount - Total online (including admins):', totalOnline.count || 0);
+      console.log('📊 User.getOnlineUsersCount - Result:', result.count || 0);
+      
+      return result.count || 0;
+    } catch (error) {
+      console.error('Error getting online users count:', error);
+      return 0;
     }
   }
 

@@ -31,6 +31,9 @@ const AdminLogin = () => {
 
       if (data.success) {
         // Store token in localStorage
+        // Clear any stray user session to avoid being counted as online user
+        localStorage.removeItem('userToken')
+        localStorage.removeItem('userData')
         localStorage.setItem('adminToken', data.token)
         localStorage.setItem('adminData', JSON.stringify(data.admin))
         

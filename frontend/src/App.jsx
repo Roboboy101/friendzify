@@ -11,6 +11,7 @@ import UserDashboard from './pages/UserDashboard'
 import ProfileEdit from './pages/ProfileEdit'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminReports from './pages/AdminReports'
+import AdminAnalytics from './pages/AdminAnalytics'
 import FriendSearch from './pages/FriendSearch'
 import FriendRequests from './pages/FriendRequests'
 import FriendsList from './pages/FriendsList'
@@ -38,6 +39,7 @@ function App() {
             <Route path="/profile/edit" element={<ProfileEdit />} />
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/reports" element={<AdminReports />} />
+            <Route path="/admin/analytics" element={<AdminAnalytics />} />
             
             {/* Friends Routes */}
             <Route path="/friends" element={<FriendsList />} />

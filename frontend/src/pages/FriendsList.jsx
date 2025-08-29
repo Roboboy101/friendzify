@@ -1,23 +1,65 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { friendsAPI, closeFriendsAPI } from '../utils/api'
+import { friendsAPI, closeFriendsAPI, analyticsAPI } from '../utils/api'
 import Avatar from '../components/Avatar'
+import OnlineStatus from '../components/OnlineStatus'
 import ReportModal from '../components/ReportModal'
 import ScheduleViewModal from '../components/ScheduleViewModal'
+import { useSocket } from '../contexts/SocketContext'
 
 const FriendsList = () => {
   const [friends, setFriends] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [onlineStatuses, setOnlineStatuses] = useState({})
   const [selectedFriend, setSelectedFriend] = useState(null)
   const [showReportModal, setShowReportModal] = useState(false)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [removingFriend, setRemovingFriend] = useState(null)
   const navigate = useNavigate()
+  const { socket } = useSocket()
 
   useEffect(() => {
     loadFriends()
   }, [])
+
+  // Socket listeners for real-time online status updates
+  useEffect(() => {
+    if (socket) {
+      const handleUserOnline = ({ userId, isOnline, timestamp }) => {
+        console.log('🔄 Received user_online event:', { userId, isOnline, timestamp })
+        setOnlineStatuses(prev => ({
+          ...prev,
+          [userId]: {
+            ...prev[userId],
+            isOnline,
+            lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
+          }
+        }))
+      }
+
+      const handleUserStatusChanged = ({ userId, isOnline, timestamp }) => {
+        console.log('🔄 Received user_status_changed event:', { userId, isOnline, timestamp })
+        setOnlineStatuses(prev => ({
+          ...prev,
+          [userId]: {
+            ...prev[userId],
+            isOnline,
+            lastSeen: isOnline ? null : (timestamp || new Date().toISOString())
+          }
+        }))
+      }
+
+      // Listen to both events for maximum responsiveness
+      socket.on('user_online', handleUserOnline)
+      socket.on('user_status_changed', handleUserStatusChanged)
+
+      return () => {
+        socket.off('user_online', handleUserOnline)
+        socket.off('user_status_changed', handleUserStatusChanged)
+      }
+    }
+  }, [socket])
 
   const loadFriends = async () => {
     setLoading(true)
@@ -29,6 +71,27 @@ const FriendsList = () => {
       
       if (data.success) {
         setFriends(data.friends)
+        
+        // Fetch activity status for all friends
+        const friendIds = data.friends.map(friend => friend.id)
+        if (friendIds.length > 0) {
+          try {
+            const activityResponse = await analyticsAPI.getActivityStatus(friendIds)
+            const activityData = await activityResponse.json()
+            if (activityData.success) {
+              const statusMap = {}
+              activityData.data.forEach(user => {
+                statusMap[user.id] = {
+                  isOnline: Boolean(user.is_online),
+                  lastSeen: user.last_seen
+                }
+              })
+              setOnlineStatuses(statusMap)
+            }
+          } catch (activityError) {
+            console.error('Error loading activity status:', activityError)
+          }
+        }
       } else {
         setError(data.message || 'Failed to load friends')
       }
@@ -168,7 +231,16 @@ const FriendsList = () => {
                         </span>
                       </div>
                       
-                      <p className="text-sm text-gray-600 mb-3">{friend.email}</p>
+                      <p className="text-sm text-gray-600 mb-2">{friend.email}</p>
+                      
+                      {/* Online Status */}
+                      <div className="mb-3">
+                        <OnlineStatus 
+                          isOnline={onlineStatuses[friend.id]?.isOnline || false}
+                          lastSeen={onlineStatuses[friend.id]?.lastSeen}
+                          size="sm"
+                        />
+                      </div>
                       
                       <div className="flex items-center space-x-4 mb-3">
                         <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 text-blue-800 text-xs font-medium">

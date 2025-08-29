@@ -24,10 +24,12 @@ export const apiCall = async (endpoint, options = {}) => {
 
   // Add token if available - prioritize adminToken for admin endpoints
   let token
-  if (endpoint.includes('/admin/')) {
+  if (endpoint.includes('/admin/') || endpoint.includes('/analytics/')) {
     token = localStorage.getItem('adminToken') || localStorage.getItem('userToken')
+    console.log('🔑 Using admin-priority token for:', endpoint, token ? 'Found' : 'Missing')
   } else {
     token = localStorage.getItem('userToken') || localStorage.getItem('adminToken')
+    console.log('🔑 Using user-priority token for:', endpoint, token ? 'Found' : 'Missing')
   }
   
   if (token) {
@@ -312,4 +314,23 @@ export const chatAPI = {
     })
 }
 
-export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI }
+// Analytics API calls
+export const analyticsAPI = {
+  // Admin-only analytics endpoints
+  getUserAnalytics: (days = 30) => 
+    apiCall(`/api/analytics/users?days=${days}`),
+
+  getOnlineCount: () => 
+    apiCall('/api/analytics/online-count'),
+
+  getPeakHours: (days = 7) => 
+    apiCall(`/api/analytics/peak-hours?days=${days}`),
+
+  // User-accessible activity status (no special admin token needed)
+  getActivityStatus: (userIds = []) => {
+    const query = userIds.length > 0 ? `?userIds=${userIds.join(',')}` : '';
+    return apiCall(`/api/analytics/activity-status${query}`);
+  }
+}
+
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI }

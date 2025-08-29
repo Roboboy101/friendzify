@@ -1,10 +1,11 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import User from './models/User.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { initDatabase } from './config/database.js';
+import { initDatabase, getDatabase } from './config/database.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -14,6 +15,7 @@ import friendsRoutes from './routes/friends.js';
 import chatRoutes from './routes/chat.js';
 import closeFriendsRoutes from './routes/closeFriends.js';
 import sosRoutes from './routes/sos.js';
+import analyticsRoutes from './routes/analytics.js';
 
 // Load environment variables
 dotenv.config();
@@ -24,7 +26,9 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL || "http://localhost:5173",
     methods: ["GET", "POST"]
-  }
+  },
+  pingTimeout: 60000, // 1 minute
+  pingInterval: 25000 // 25 seconds
 });
 
 // Initialize database
@@ -47,6 +51,7 @@ app.use('/api/friends', friendsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/close-friends', closeFriendsRoutes);
 app.use('/api/sos', sosRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -60,9 +65,10 @@ app.get('/', (req, res) => {
     user: '/api/user',
     friends: '/api/friends',
     chat: '/api/chat',
-    closeFriends: '/api/close-friends',
-    sos: '/api/sos'
-    }
+          closeFriends: '/api/close-friends',
+      sos: '/api/sos',
+      analytics: '/api/analytics'
+      }
   });
 });
 
@@ -82,11 +88,32 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   // User joins with their userId
-  socket.on('join', (userId) => {
-    connectedUsers.set(userId, socket.id);
-    socket.userId = userId;
-    socket.join(`user_${userId}`); // Join user-specific room for SOS alerts
-    console.log(`User ${userId} joined with socket ${socket.id}`);
+  socket.on('join', async (userId) => {
+    try {
+      connectedUsers.set(userId, socket.id);
+      socket.userId = userId;
+      socket.join(`user_${userId}`); // Join user-specific room for SOS alerts
+      
+      // Update user online status
+      const user = await User.findById(userId);
+      if (user) {
+        await user.setOnlineStatus(true);
+        await user.logActivity('login', socket.handshake.address, socket.handshake.headers['user-agent']);
+        
+        // Store login time for session duration tracking
+        socket.loginTime = Date.now();
+      }
+      
+      console.log(`User ${userId} joined with socket ${socket.id} and set online`);
+      
+      // Broadcast online status to ALL connected users immediately
+      socket.broadcast.emit('user_online', { userId, isOnline: true });
+      
+      // Also broadcast to specific rooms if needed
+      io.emit('user_status_changed', { userId, isOnline: true, timestamp: new Date().toISOString() });
+    } catch (error) {
+      console.error('Error handling user join:', error);
+    }
   });
   
   // Handle sending messages
@@ -108,7 +135,8 @@ io.on('connection', (socket) => {
           receiverId,
           message,
           messageType,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          messageId: Date.now() // Add unique message ID
         });
       }
       
@@ -149,10 +177,35 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('disconnect', () => {
+  socket.on('disconnect', async () => {
     if (socket.userId) {
-      connectedUsers.delete(socket.userId);
-      console.log(`User ${socket.userId} disconnected`);
+      try {
+        // Update user offline status
+        const user = await User.findById(socket.userId);
+        if (user) {
+          await user.setOnlineStatus(false);
+          
+          // Calculate session duration and update stats
+          if (socket.loginTime) {
+            const sessionDuration = Math.floor((Date.now() - socket.loginTime) / 1000); // in seconds
+            await user.updateSessionStats(sessionDuration);
+            await user.logActivity('logout', socket.handshake.address, socket.handshake.headers['user-agent'], { sessionDuration });
+          }
+        }
+        
+        connectedUsers.delete(socket.userId);
+        
+        // Broadcast offline status to ALL connected users immediately
+        socket.broadcast.emit('user_online', { userId: socket.userId, isOnline: false });
+        
+        // Also broadcast to all rooms
+        io.emit('user_status_changed', { userId: socket.userId, isOnline: false, timestamp: new Date().toISOString() });
+        
+        console.log(`User ${socket.userId} disconnected and set offline`);
+      } catch (error) {
+        console.error('Error handling user disconnect:', error);
+        connectedUsers.delete(socket.userId);
+      }
     }
     console.log('User disconnected:', socket.id);
   });
@@ -160,6 +213,33 @@ io.on('connection', (socket) => {
 
 // Make io available to routes
 app.set('io', io);
+
+// Periodic cleanup of stale online users (every 5 minutes)
+setInterval(async () => {
+  try {
+    const db = getDatabase();
+    const result = await db.run(`
+      UPDATE users 
+      SET is_online = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE is_online = 1 
+        AND last_seen < datetime('now', '-15 minutes')
+        AND is_approved = TRUE 
+        AND is_active = TRUE
+    `);
+    
+    if (result.changes > 0) {
+      console.log(`🧹 Cleaned up ${result.changes} stale online users`);
+      
+      // Broadcast updated online status
+      io.emit('bulk_user_offline', { 
+        message: `${result.changes} users marked offline due to inactivity`,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error in periodic cleanup:', error);
+  }
+}, 10 * 60 * 1000); // 10 minutes
 
 const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || 'localhost';
