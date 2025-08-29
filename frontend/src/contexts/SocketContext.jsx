@@ -25,7 +25,11 @@ export const SocketProvider = ({ children }) => {
     if (!shouldInit) return;
 
     const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:5001', {
-      transports: ['websocket', 'polling']
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 500,
+      timeout: 20000
     });
 
     newSocket.on('connect', () => {
@@ -42,8 +46,8 @@ export const SocketProvider = ({ children }) => {
       }
     });
 
-    newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    newSocket.on('disconnect', (reason) => {
+      console.log('Socket disconnected', reason);
       setIsConnected(false);
     });
 

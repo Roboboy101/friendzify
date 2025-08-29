@@ -2,6 +2,7 @@ import express from 'express';
 import User from '../models/User.js';
 import Admin from '../models/Admin.js';
 import Report from '../models/Report.js';
+import SOS from '../models/SOS.js';
 import { verifyToken, requireAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -445,6 +446,128 @@ router.get('/users/restricted', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get restricted users.'
+    });
+  }
+});
+
+// === SOS ALERT MANAGEMENT ROUTES ===
+
+// Get all SOS alerts (active and historical)
+router.get('/sos/alerts', async (req, res) => {
+  try {
+    const { 
+      status = 'all', 
+      page = 1, 
+      limit = 20,
+      sortBy = 'created_at',
+      sortOrder = 'DESC'
+    } = req.query;
+    
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    const [alerts, totalCount] = await Promise.all([
+      SOS.getAllAlertsForAdmin({
+        status,
+        limit: parseInt(limit),
+        offset,
+        sortBy,
+        sortOrder
+      }),
+      SOS.getAlertsCountForAdmin(status)
+    ]);
+    
+    res.json({
+      success: true,
+      alerts: alerts.map(alert => alert.toJSON()),
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Get SOS alerts error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get SOS alerts.'
+    });
+  }
+});
+
+// Get SOS alert statistics
+router.get('/sos/stats', async (req, res) => {
+  try {
+    const stats = await SOS.getStatistics();
+    
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('Get SOS stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get SOS statistics.'
+    });
+  }
+});
+
+// Get specific SOS alert details
+router.get('/sos/alerts/:alertId', async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    
+    const alert = await SOS.getAlertById(parseInt(alertId));
+    if (!alert) {
+      return res.status(404).json({
+        success: false,
+        message: 'SOS alert not found.'
+      });
+    }
+    
+    res.json({
+      success: true,
+      alert: alert.toJSON()
+    });
+  } catch (error) {
+    console.error('Get SOS alert error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get SOS alert details.'
+    });
+  }
+});
+
+// Admin cancel SOS alert
+router.post('/sos/alerts/:alertId/cancel', async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    const { reason } = req.body;
+    
+    const result = await SOS.adminCancelAlert(parseInt(alertId), req.user.id, reason);
+    
+    // Emit real-time notification about admin cancellation
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('sos_admin_cancelled', {
+        alertId: parseInt(alertId),
+        cancelledBy: 'admin',
+        reason,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'SOS alert cancelled by admin successfully.',
+      result
+    });
+  } catch (error) {
+    console.error('Admin cancel SOS alert error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to cancel SOS alert.'
     });
   }
 });

@@ -90,12 +90,13 @@ io.on('connection', (socket) => {
   // User joins with their userId
   socket.on('join', async (userId) => {
     try {
-      connectedUsers.set(userId, socket.id);
-      socket.userId = userId;
-      socket.join(`user_${userId}`); // Join user-specific room for SOS alerts
+      const uid = parseInt(userId);
+      connectedUsers.set(uid, socket.id);
+      socket.userId = uid;
+      socket.join(`user_${uid}`); // Join user-specific room for SOS alerts
       
       // Update user online status
-      const user = await User.findById(userId);
+      const user = await User.findById(uid);
       if (user) {
         await user.setOnlineStatus(true);
         await user.logActivity('login', socket.handshake.address, socket.handshake.headers['user-agent']);
@@ -104,13 +105,13 @@ io.on('connection', (socket) => {
         socket.loginTime = Date.now();
       }
       
-      console.log(`User ${userId} joined with socket ${socket.id} and set online`);
+      console.log(`User ${uid} joined with socket ${socket.id} and set online`);
       
       // Broadcast online status to ALL connected users immediately
-      socket.broadcast.emit('user_online', { userId, isOnline: true });
+      socket.broadcast.emit('user_online', { userId: uid, isOnline: true });
       
       // Also broadcast to specific rooms if needed
-      io.emit('user_status_changed', { userId, isOnline: true, timestamp: new Date().toISOString() });
+      io.emit('user_status_changed', { userId: uid, isOnline: true, timestamp: new Date().toISOString() });
     } catch (error) {
       console.error('Error handling user join:', error);
     }

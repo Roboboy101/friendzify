@@ -102,6 +102,21 @@ const Chat = () => {
               ? { id: firstMessage.receiver_id, name: firstMessage.receiver_name, profile_picture: firstMessage.receiver_picture }
               : { id: firstMessage.sender_id, name: firstMessage.sender_name, profile_picture: firstMessage.sender_picture };
             setFriend(friendData);
+
+            // Fetch initial activity status for this friend
+            try {
+              const resp = await analyticsAPI.getActivityStatus([friendData.id]);
+              const activity = await resp.json();
+              if (activity.success && Array.isArray(activity.data) && activity.data.length > 0) {
+                const u = activity.data[0];
+                setOnlineStatus({
+                  isOnline: Boolean(u.is_online),
+                  lastSeen: u.last_seen
+                });
+              }
+            } catch (e) {
+              console.warn('Chat: failed to load initial activity status', e);
+            }
           }
         }
       } catch (error) {
@@ -147,7 +162,8 @@ const Chat = () => {
     if (!socket) return;
 
     const handleNewMessage = (data) => {
-      if (data.senderId === parseInt(userId)) {
+      const activeId = parseInt(userId);
+      if (data.senderId === activeId || data.receiverId === activeId) {
         setMessages(prev => {
           // Remove any temporary messages with the same content to avoid duplicates
           const filtered = prev.filter(msg => !(msg.isTemporary && msg.message === data.message));

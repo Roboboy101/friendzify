@@ -20,7 +20,6 @@ class SOS {
     // User details (when joined)
     this.user_name = data.user_name;
     this.user_email = data.user_email;
-    this.user_profile_picture = data.user_profile_picture;
   }
 
   // Create a new SOS alert
@@ -104,8 +103,7 @@ class SOS {
       SELECT 
         sa.*,
         u.name as user_name,
-        u.email as user_email,
-        u.profile_picture as user_profile_picture
+        u.email as user_email
       FROM sos_alerts sa
       JOIN users u ON sa.user_id = u.id
       WHERE sa.id = ?
@@ -119,7 +117,7 @@ class SOS {
     const db = getDatabase();
     
     const alerts = await db.all(`
-      SELECT sa.*, u.name as user_name, u.email as user_email, u.profile_picture as user_profile_picture
+      SELECT sa.*, u.name as user_name, u.email as user_email
       FROM sos_alerts sa
       JOIN users u ON sa.user_id = u.id
       WHERE sa.user_id = ? AND sa.is_active = TRUE AND sa.expires_at > CURRENT_TIMESTAMP
@@ -138,8 +136,7 @@ class SOS {
         sn.*,
         sa.*,
         u.name as user_name,
-        u.email as user_email,
-        u.profile_picture as user_profile_picture
+        u.email as user_email
       FROM sos_notifications sn
       JOIN sos_alerts sa ON sn.sos_alert_id = sa.id
       JOIN users u ON sa.user_id = u.id
@@ -213,6 +210,91 @@ class SOS {
     return stats;
   }
 
+  // Get all SOS alerts for admin (active and historical)
+  static async getAllAlertsForAdmin(options = {}) {
+    const db = getDatabase();
+    const { 
+      status = 'all', // 'all', 'active', 'cancelled', 'expired'
+      limit = 50, 
+      offset = 0,
+      sortBy = 'created_at',
+      sortOrder = 'DESC'
+    } = options;
+
+    let whereClause = '1=1';
+    const params = [];
+
+    if (status === 'active') {
+      whereClause = 'sa.is_active = TRUE AND sa.expires_at > CURRENT_TIMESTAMP';
+    } else if (status === 'cancelled') {
+      whereClause = 'sa.is_cancelled = TRUE';
+    } else if (status === 'expired') {
+      whereClause = 'sa.is_active = FALSE AND sa.is_cancelled = FALSE';
+    }
+
+    const alerts = await db.all(`
+      SELECT 
+        sa.*,
+        u.name as user_name,
+        u.email as user_email,
+        COUNT(sn.id) as notifications_sent
+      FROM sos_alerts sa
+      JOIN users u ON sa.user_id = u.id
+      LEFT JOIN sos_notifications sn ON sa.id = sn.sos_alert_id
+      WHERE ${whereClause}
+      GROUP BY sa.id
+      ORDER BY sa.${sortBy} ${sortOrder}
+      LIMIT ? OFFSET ?
+    `, [...params, limit, offset]);
+
+    return alerts.map(alert => new SOS(alert));
+  }
+
+  // Get total count of SOS alerts for admin pagination
+  static async getAlertsCountForAdmin(status = 'all') {
+    const db = getDatabase();
+    
+    let whereClause = '1=1';
+    if (status === 'active') {
+      whereClause = 'is_active = TRUE AND expires_at > CURRENT_TIMESTAMP';
+    } else if (status === 'cancelled') {
+      whereClause = 'is_cancelled = TRUE';
+    } else if (status === 'expired') {
+      whereClause = 'is_active = FALSE AND is_cancelled = FALSE';
+    }
+
+    const result = await db.get(`
+      SELECT COUNT(*) as count 
+      FROM sos_alerts 
+      WHERE ${whereClause}
+    `);
+
+    return result.count;
+  }
+
+  // Admin force cancel SOS alert
+  static async adminCancelAlert(alertId, adminId, reason = null) {
+    const db = getDatabase();
+    
+    const result = await db.run(`
+      UPDATE sos_alerts 
+      SET is_cancelled = TRUE, 
+          is_active = FALSE,
+          cancelled_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND is_active = TRUE
+    `, [alertId]);
+
+    if (result.changes === 0) {
+      throw new Error('SOS alert not found or already cancelled');
+    }
+
+    // Log admin action (we could add an admin_actions table later)
+    console.log(`Admin ${adminId} cancelled SOS alert ${alertId}${reason ? ` - Reason: ${reason}` : ''}`);
+
+    return { success: true, alertId };
+  }
+
   // Generate Google Maps link
   getGoogleMapsLink() {
     return `https://www.google.com/maps?q=${this.latitude},${this.longitude}`;
@@ -236,7 +318,6 @@ class SOS {
       user_id: this.user_id,
       user_name: this.user_name,
       user_email: this.user_email,
-      user_profile_picture: this.user_profile_picture,
       message: this.message,
       latitude: this.latitude,
       longitude: this.longitude,

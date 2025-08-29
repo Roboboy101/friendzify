@@ -7,21 +7,47 @@ const OnlineStatus = ({
   size = 'sm',
   className = '' 
 }) => {
+  const parseLastSeen = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    // Epoch numeric or string
+    if (typeof value === 'number') return new Date(value < 1e12 ? value * 1000 : value);
+    if (typeof value === 'string' && /^\d{10,13}$/.test(value)) {
+      const n = parseInt(value, 10);
+      return new Date(n < 1e12 ? n * 1000 : n);
+    }
+    // SQLite "YYYY-MM-DD HH:MM:SS" -> store is UTC in DB, parse as UTC
+    if (typeof value === 'string' && /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(value)) {
+      return new Date(value.replace(' ', 'T') + 'Z');
+    }
+    // ISO
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const formatLastSeen = (lastSeenDate) => {
-    if (!lastSeenDate) return 'Never';
-    
+    const lastSeenTime = parseLastSeen(lastSeenDate);
+    if (!lastSeenTime) {
+      try {
+        // Debug output to help trace invalid values
+        // eslint-disable-next-line no-console
+        console.warn('OnlineStatus debug: Unparseable lastSeen', { lastSeenDate });
+      } catch {}
+      return 'Unknown';
+    }
+
     const now = new Date();
-    const lastSeenTime = new Date(lastSeenDate);
     const diffMs = now - lastSeenTime;
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
+
     if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    
+    if (diffMins >= 2 && diffMins <= 5) return 'few mins ago';
+    if (diffMins < 60) return diffMins === 1 ? '1 min ago' : `${diffMins} mins ago`;
+    if (diffHours < 24) return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+    if (diffDays < 7) return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+
     return lastSeenTime.toLocaleDateString();
   };
 
@@ -48,7 +74,7 @@ const OnlineStatus = ({
         </div>
         {showText && (
           <span className={`text-green-600 font-medium ${textSizeClasses[size]} transition-all duration-300`}>
-            Online
+            Active
           </span>
         )}
       </div>

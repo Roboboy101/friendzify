@@ -333,4 +333,28 @@ export const analyticsAPI = {
   }
 }
 
-export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI }
+// Admin SOS Management API calls
+export const adminSosAPI = {
+  // Get all SOS alerts with filtering and pagination
+  getAlerts: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiCall(`/api/admin/sos/alerts?${query}`);
+  },
+
+  // Get SOS statistics
+  getStats: () => 
+    apiCall('/api/admin/sos/stats'),
+
+  // Get specific SOS alert details
+  getAlert: (alertId) => 
+    apiCall(`/api/admin/sos/alerts/${alertId}`),
+
+  // Admin cancel SOS alert
+  cancelAlert: (alertId, reason = null) => 
+    apiCall(`/api/admin/sos/alerts/${alertId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    })
+}
+
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI, adminSosAPI }
