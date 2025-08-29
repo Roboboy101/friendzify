@@ -1,6 +1,7 @@
 import express from 'express';
 import Chat from '../models/Chat.js';
 import Friend from '../models/Friend.js';
+import Notification from '../models/Notification.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -51,6 +52,16 @@ router.get('/conversation/:userId', async (req, res) => {
     // Mark messages as read
     await Chat.markMessagesAsRead(parseInt(userId), req.user.id);
     
+    // Dismiss message notifications from this sender
+    await Notification.dismissMessageNotifications(req.user.id, parseInt(userId));
+    
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${req.user.id}`).emit('dismiss_message_notifications', {
+        senderId: parseInt(userId)
+      });
+    }
+    
     res.json({
       success: true,
       messages
@@ -92,6 +103,36 @@ router.post('/send', async (req, res) => {
       messageType
     );
     
+    // Send persistent notification to receiver
+    const senderUser = await Friend.getUserById(req.user.id);
+    const io = req.app.get('io');
+    
+    await Notification.sendNotification(parseInt(receiverId), {
+      type: 'new_message',
+      title: 'New Message',
+      message: `${senderUser.name}: ${message.length > 30 ? message.substring(0, 30) + '...' : message}`,
+      data: {
+        messageId: chatMessage.id,
+        sender: {
+          id: req.user.id,
+          name: senderUser.name,
+          email: senderUser.email,
+          profile_picture: senderUser.profile_picture
+        },
+        messageType: messageType,
+        timestamp: chatMessage.created_at
+      },
+      priority: 'normal',
+      actions: [
+        {
+          label: 'Reply',
+          action: 'open_chat',
+          userId: req.user.id
+        }
+      ],
+      expiresInHours: 24 // Messages expire after 1 day
+    }, io);
+    
     res.json({
       success: true,
       message: 'Message sent successfully!',
@@ -112,6 +153,16 @@ router.post('/read/:userId', async (req, res) => {
     const { userId } = req.params;
     
     await Chat.markMessagesAsRead(parseInt(userId), req.user.id);
+    
+    // Dismiss message notifications from this sender
+    await Notification.dismissMessageNotifications(req.user.id, parseInt(userId));
+    
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user_${req.user.id}`).emit('dismiss_message_notifications', {
+        senderId: parseInt(userId)
+      });
+    }
     
     res.json({
       success: true,

@@ -157,6 +157,25 @@ const createTables = async () => {
       )
     `);
 
+    // Admin reports table (user reports to admin - bug reports, feedback, etc.)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS admin_reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('bug_report', 'feedback', 'suggestion', 'other')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        urgency TEXT NOT NULL DEFAULT 'low' CHECK(urgency IN ('low', 'medium', 'high')),
+        status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new', 'in_progress', 'resolved', 'closed')),
+        admin_notes TEXT,
+        reviewed_by INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES admins(id)
+      )
+    `);
+
     // Create close_friends table
     await db.exec(`
       CREATE TABLE IF NOT EXISTS close_friends (
@@ -236,6 +255,71 @@ const createTables = async () => {
         user_agent TEXT,
         session_duration INTEGER,
         additional_data TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create meetups table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS meetups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organizer_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        location TEXT NOT NULL,
+        date_time DATETIME NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'cancelled', 'completed')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (organizer_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // Create meetup_invitations table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS meetup_invitations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meetup_id INTEGER NOT NULL,
+        inviter_id INTEGER NOT NULL,
+        invitee_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'declined')),
+        response_message TEXT,
+        invited_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        responded_at DATETIME,
+        FOREIGN KEY (meetup_id) REFERENCES meetups(id) ON DELETE CASCADE,
+        FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (invitee_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(meetup_id, invitee_id)
+      )
+    `);
+
+    // Create meetup_participants table (for confirmed attendees)
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS meetup_participants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meetup_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (meetup_id) REFERENCES meetups(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(meetup_id, user_id)
+      )
+    `);
+
+    // Create notifications table for persistence
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        data TEXT, -- JSON data
+        priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal', 'high', 'urgent')),
+        is_read BOOLEAN DEFAULT FALSE,
+        actions TEXT, -- JSON array of actions
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )
     `);

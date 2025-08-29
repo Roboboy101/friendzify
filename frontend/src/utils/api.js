@@ -357,4 +357,136 @@ export const adminSosAPI = {
     })
 }
 
-export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI, adminSosAPI }
+// User Reports API calls
+export const userReportsAPI = {
+  // Submit a report to admin
+  submitReport: (reportData) => 
+    apiCall('/api/reports', {
+      method: 'POST',
+      body: JSON.stringify(reportData)
+    }),
+
+  // Get user's own reports
+  getMyReports: (page = 1, limit = 10) => 
+    apiCall(`/api/reports/my-reports?page=${page}&limit=${limit}`),
+
+  // Get specific report details (user's own only)
+  getReportDetails: (reportId) => 
+    apiCall(`/api/reports/${reportId}`)
+}
+
+// Admin Reports Management API calls
+export const adminReportsAPI = {
+  // Get all admin reports with filtering and pagination
+  getReports: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiCall(`/api/admin/feedback-reports?${query}`);
+  },
+
+  // Get admin report statistics
+  getStats: () => 
+    apiCall('/api/admin/feedback-reports/stats'),
+
+  // Get most active reporters
+  getActiveReporters: (limit = 10) => 
+    apiCall(`/api/admin/feedback-reports/active-reporters?limit=${limit}`),
+
+  // Get specific report details
+  getReport: (reportId) => 
+    apiCall(`/api/admin/feedback-reports/${reportId}`),
+
+  // Update report status
+  updateStatus: (reportId, status, adminNotes = '') => 
+    apiCall(`/api/admin/feedback-reports/${reportId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, adminNotes })
+    })
+}
+
+// Meetup API
+export const meetupsAPI = {
+  // Create a new meetup
+  createMeetup: (meetupData) => 
+    apiCall('/api/meetups', {
+      method: 'POST',
+      body: JSON.stringify(meetupData)
+    }),
+
+  // Get meetups for current user
+  getMeetups: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiCall(`/api/meetups?${query}`);
+  },
+
+  // Get specific meetup by ID
+  getMeetup: (meetupId) => 
+    apiCall(`/api/meetups/${meetupId}`),
+
+  // Update meetup (organizer only)
+  updateMeetup: (meetupId, updateData) => 
+    apiCall(`/api/meetups/${meetupId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updateData)
+    }),
+
+  // Delete meetup (organizer only)
+  deleteMeetup: (meetupId) => 
+    apiCall(`/api/meetups/${meetupId}`, {
+      method: 'DELETE'
+    }),
+
+  // Invite friends to meetup
+  inviteFriends: (meetupId, friendIds) => 
+    apiCall(`/api/meetups/${meetupId}/invite`, {
+      method: 'POST',
+      body: JSON.stringify({ friend_ids: friendIds })
+    }),
+
+  // Get user's meetup invitations
+  getInvitations: (status = 'pending') => 
+    apiCall(`/api/meetups/invitations/pending?status=${status}`),
+
+  // Respond to meetup invitation
+  respondToInvitation: (invitationId, response, message = null) => 
+    apiCall(`/api/meetups/invitations/${invitationId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ response, message })
+    }),
+
+  // Get meetup participants
+  getParticipants: (meetupId) => 
+    apiCall(`/api/meetups/${meetupId}/participants`)
+};
+
+// Notifications API
+export const notificationsAPI = {
+  // Get user notifications
+  getNotifications: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return apiCall(`/api/notifications?${query}`);
+  },
+
+  // Get unread notification count
+  getUnreadCount: () => 
+    apiCall('/api/notifications/unread-count'),
+
+  // Mark notification as read
+  markAsRead: (notificationId) => 
+    apiCall(`/api/notifications/${notificationId}/read`, {
+      method: 'POST'
+    }),
+
+  // Mark all notifications as read
+  markAllAsRead: () => 
+    apiCall('/api/notifications/mark-all-read', {
+      method: 'POST'
+    }),
+
+  // Delete notification
+  deleteNotification: (notificationId) => 
+    apiCall(`/api/notifications/${notificationId}`, {
+      method: 'DELETE'
+    })
+};
+
+export default { apiCall, authAPI, userAPI, adminAPI, friendsAPI, chatAPI, closeFriendsAPI, sosAPI, analyticsAPI, adminSosAPI, userReportsAPI, adminReportsAPI, meetupsAPI, notificationsAPI }

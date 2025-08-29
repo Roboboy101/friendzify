@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { chatAPI, analyticsAPI } from '../utils/api';
 import OnlineStatus from '../components/OnlineStatus';
 import { useSocket } from '../contexts/SocketContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import Avatar from '../components/Avatar';
 
 const Chat = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const { notifications, markAsRead, markChatNotificationsRead } = useNotifications();
   const [messages, setMessages] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -61,6 +63,15 @@ const Chat = () => {
       setCurrentUser(JSON.parse(userData));
     }
   }, []);
+
+  // Immediately dismiss notifications when entering chat
+  useEffect(() => {
+    if (userId) {
+      console.log(`🔔 User entered chat with ${userId} - immediately dismissing notifications`);
+      // Use shared helper to clear both server + local for this sender
+      markChatNotificationsRead(parseInt(userId));
+    }
+  }, [userId, notifications, markChatNotificationsRead]);
 
   // Load conversation
   useEffect(() => {

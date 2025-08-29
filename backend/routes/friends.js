@@ -2,6 +2,7 @@ import express from 'express';
 import { requireAuth, requireApprovedUser } from '../middleware/auth.js';
 import Friend from '../models/Friend.js';
 import Report from '../models/Report.js';
+import Notification from '../models/Notification.js';
 
 const router = express.Router();
 
@@ -47,6 +48,32 @@ router.post('/request', requireAuth, requireApprovedUser, async (req, res) => {
     }
     
     const request = await Friend.sendFriendRequest(senderId, receiverId);
+    
+    // Send persistent notification to receiver
+    const senderUser = await Friend.getUserById(senderId);
+    const io = req.app.get('io');
+    
+    await Notification.sendNotification(receiverId, {
+      type: 'friend_request_received',
+      title: 'New Friend Request',
+      message: `${senderUser.name} sent you a friend request`,
+      data: {
+        requestId: request.id,
+        sender: {
+          id: senderId,
+          name: senderUser.name,
+          email: senderUser.email,
+          profile_picture: senderUser.profile_picture
+        }
+      },
+      priority: 'normal',
+      actions: [
+        {
+          label: 'View Requests',
+          action: 'view_friend_requests'
+        }
+      ]
+    }, io);
     
     res.json({
       success: true,
@@ -97,7 +124,41 @@ router.post('/requests/:requestId/accept', requireAuth, requireApprovedUser, asy
     const { requestId } = req.params;
     const userId = req.user.id;
     
-    await Friend.acceptFriendRequest(parseInt(requestId), userId);
+    const requestDetails = await Friend.acceptFriendRequest(parseInt(requestId), userId);
+    
+    // Send persistent notification to requester
+    if (requestDetails) {
+      const accepterUser = await Friend.getUserById(userId);
+      const io = req.app.get('io');
+      
+      await Notification.sendNotification(requestDetails.sender_id, {
+        type: 'friend_request_accepted',
+        title: 'Friend Request Accepted',
+        message: `${accepterUser.name} accepted your friend request`,
+        data: {
+          requestId: parseInt(requestId),
+          accepter: {
+            id: userId,
+            name: accepterUser.name,
+            email: accepterUser.email,
+            profile_picture: accepterUser.profile_picture
+          }
+        },
+        priority: 'normal',
+        actions: [
+          {
+            label: 'View Profile',
+            action: 'view_profile',
+            userId: userId
+          },
+          {
+            label: 'Send Message',
+            action: 'send_message',
+            userId: userId
+          }
+        ]
+      }, io);
+    }
     
     res.json({
       success: true,

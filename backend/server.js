@@ -16,6 +16,11 @@ import chatRoutes from './routes/chat.js';
 import closeFriendsRoutes from './routes/closeFriends.js';
 import sosRoutes from './routes/sos.js';
 import analyticsRoutes from './routes/analytics.js';
+import adminReportsRoutes from './routes/adminReports.js';
+import userReportsRoutes from './routes/userReports.js';
+import meetupsRoutes from './routes/meetups.js';
+import notificationsRoutes from './routes/notifications.js';
+import ReminderService from './services/reminderService.js';
 
 // Load environment variables
 dotenv.config();
@@ -52,6 +57,10 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/close-friends', closeFriendsRoutes);
 app.use('/api/sos', sosRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/admin/feedback-reports', adminReportsRoutes);
+app.use('/api/reports', userReportsRoutes);
+app.use('/api/meetups', meetupsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Basic route
 app.get('/', (req, res) => {
@@ -60,15 +69,19 @@ app.get('/', (req, res) => {
     status: 'running',
     version: '1.0.0',
     endpoints: {
-          auth: '/api/auth',
-    admin: '/api/admin',
-    user: '/api/user',
-    friends: '/api/friends',
-    chat: '/api/chat',
-          closeFriends: '/api/close-friends',
+      auth: '/api/auth',
+      admin: '/api/admin',
+      user: '/api/user',
+      friends: '/api/friends',
+      chat: '/api/chat',
+      closeFriends: '/api/close-friends',
       sos: '/api/sos',
-      analytics: '/api/analytics'
-      }
+      analytics: '/api/analytics',
+      adminReports: '/api/admin/reports',
+      userReports: '/api/reports',
+      meetups: '/api/meetups',
+      notifications: '/api/notifications'
+    }
   });
 });
 
@@ -180,6 +193,31 @@ io.on('connection', (socket) => {
     }
   });
   
+  // Handle meetup invitation responses
+  socket.on('meetup_invitation_response', async (data) => {
+    try {
+      const { invitationId, response, message } = data;
+      const userId = socket.userId;
+      
+      if (!userId) {
+        socket.emit('error', { message: 'Not authenticated' });
+        return;
+      }
+      
+      // The actual database update is handled by the API route
+      // This is just for real-time acknowledgment
+      socket.emit('meetup_response_sent', {
+        invitationId,
+        response,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Socket meetup response error:', error);
+      socket.emit('error', { message: 'Failed to process meetup response' });
+    }
+  });
+
   socket.on('disconnect', async () => {
     if (socket.userId) {
       try {
@@ -216,6 +254,10 @@ io.on('connection', (socket) => {
 
 // Make io available to routes
 app.set('io', io);
+
+// Initialize reminder service
+const reminderService = new ReminderService(io);
+reminderService.start();
 
 // Periodic cleanup of stale online users (every 5 minutes)
 setInterval(async () => {

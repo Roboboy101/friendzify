@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { userAPI, authAPI } from '../utils/api'
 import CampusSchedule from '../components/CampusSchedule'
 import Avatar from '../components/Avatar'
+import NotificationCenter from '../components/NotificationCenter'
 
 const UserDashboard = () => {
   const [user, setUser] = useState(null)
@@ -158,6 +159,7 @@ const UserDashboard = () => {
             </div>
             
             <div className="flex items-center space-x-4">
+              <NotificationCenter />
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
                   <span className="text-primary-600 font-medium text-sm">
@@ -281,7 +283,7 @@ const UserDashboard = () => {
             {/* Quick Actions (moved above Campus Free Schedule) */}
             <div className="card p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <button 
                   onClick={() => navigate('/sos')}
                   className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
@@ -312,6 +314,40 @@ const UserDashboard = () => {
                     <div>
                       <h3 className="font-medium text-gray-900">Close Friends</h3>
                       <p className="text-sm text-gray-600">Manage emergency contacts</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => navigate('/meetups')}
+                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.196-2.196M17 20v-2a3 3 0 00-3-3h-4a3 3 0 00-3 3v2m17 0H3m14-8a3 3 0 11-6 0 3 3 0 016 0zm-3-3a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Meetups</h3>
+                      <p className="text-sm text-gray-600">Organize & join meetups</p>
+                    </div>
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => navigate('/report-to-admin')}
+                  className="text-left p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">Report to Admin</h3>
+                      <p className="text-sm text-gray-600">Bug reports & feedback</p>
                     </div>
                   </div>
                 </button>

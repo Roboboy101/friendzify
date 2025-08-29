@@ -156,7 +156,7 @@ class Friend {
       );
       
       await db.run('COMMIT');
-      return { success: true };
+      return { success: true, sender_id: request.sender_id, receiver_id: request.receiver_id };
     } catch (error) {
       await db.run('ROLLBACK');
       throw error;
@@ -251,6 +251,18 @@ class Friend {
     }
     
     return 'none';
+  }
+
+  // Get user by ID (for notifications)
+  static async getUserById(userId) {
+    const db = getDatabase();
+    
+    const user = await db.get(
+      'SELECT id, name, email, profile_picture FROM users WHERE id = ? AND is_active = 1',
+      [userId]
+    );
+    
+    return user;
   }
 }
 
